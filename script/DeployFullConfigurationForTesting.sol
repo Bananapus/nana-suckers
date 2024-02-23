@@ -21,7 +21,7 @@ import "@bananapus/core/src/interfaces/terminal/IJBRedeemTerminal.sol";
 // import "@bananapus/core/src/interfaces/IJBPriceFeed.sol";
 import "@bananapus/core/src/interfaces/IJBPrices.sol";
 import "@bananapus/core/src/libraries/JBConstants.sol";
-// import "@bananapus/core/src/libraries/JBPermissionIds.sol";
+// import "@bananapus/permission-ids/src/JBPermissionIds.sol";
 // import {JBRulesetConfig} from "@bananapus/core/src/structs/JBRulesetConfig.sol";
 import {JBFundAccessLimitGroup} from "@bananapus/core/src/structs/JBFundAccessLimitGroup.sol";
 import {SafeERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";

@@ -7,7 +7,7 @@ import {IBPSuckerDeployerFeeless} from "./../interfaces/IBPSuckerDeployerFeeless
 
 import {Create2} from "@openzeppelin/contracts/utils/Create2.sol";
 import {JBPermissioned, IJBPermissions} from "@bananapus/core/src/abstract/JBPermissioned.sol";
-import {JBPermissionIds} from "@bananapus/core/src/libraries/JBPermissionIds.sol";
+import {JBPermissionIds} from "@bananapus/permission-ids/src/JBPermissionIds.sol";
 import {IJBPayoutTerminal} from "@bananapus/core/src/interfaces/terminal/IJBPayoutTerminal.sol";
 
 contract BPOptimismSuckerDeployer is JBPermissioned, IBPSuckerDeployerFeeless {

@@ -13,7 +13,7 @@ pragma solidity ^0.8.13;
 // import "@bananapus/core/src/interfaces/terminal/IJBMultiTerminal.sol";
 // import "@bananapus/core/src/interfaces/IJBPriceFeed.sol";
 // import "@bananapus/core/src/libraries/JBConstants.sol";
-// import "@bananapus/core/src/libraries/JBPermissionIds.sol";
+// import "@bananapus/permission-ids/src/JBPermissionIds.sol";
 // import {JBRulesetConfig} from "@bananapus/core/src/structs/JBRulesetConfig.sol";
 // import {JBFundAccessLimitGroup} from "@bananapus/core/src/structs/JBFundAccessLimitGroup.sol";
 // import {IJBRulesetApprovalHook} from "@bananapus/core/src/interfaces/IJBRulesetApprovalHook.sol";
