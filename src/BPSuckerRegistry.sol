@@ -72,6 +72,8 @@ contract BPSuckerRegistry is JBOwnable, IBPSuckerRegistry {
             permissionId: JBPermissionIds.DEPLOY_SUCKERS
         });
 
+        if (configurations.length == 0) revert NO_SUCKER_CONFIG();
+
         // Create an array to store the suckers as they are deployed.
         suckers = new address[](configurations.length);
 

@@ -5,6 +5,7 @@ import {BPSuckerDeployerConfig} from "../structs/BPSuckerDeployerConfig.sol";
 
 interface IBPSuckerRegistry {
     error INVALID_DEPLOYER(address deployer);
+    error NO_SUCKER_CONFIG();
 
     event SuckerDeployerAllowed(address deployer);
     event SuckersDeployedFor(uint256 projectId, address[] suckers);
