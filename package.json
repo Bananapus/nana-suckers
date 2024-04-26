@@ -17,7 +17,7 @@
     "artifacts": "source ./.env && npx sphinx artifacts --org-id 'cltepuu9u0003j58rjtbd0hvu' --project-name 'nana-suckers'"
   },
   "dependencies": {
-    "@arbitrum/nitro-contracts": "github:OffchainLabs/nitro-contracts",
+    "@arbitrum/nitro-contracts": "^1.2.1",
     "@bananapus/core": "^0.0.13",
     "@bananapus/ownable": "^0.0.6",
     "@bananapus/permission-ids": "^0.0.5",
