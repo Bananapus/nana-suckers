@@ -65,9 +65,6 @@ contract JBArbitrumSucker is JBSucker {
         // Layer specific properties
         uint256 _chainId = block.chainid;
 
-        // If LAYER is left uninitialized, the chain is not currently supported.
-        if (!isSupportedChain(_chainId)) revert ChainNotSupported();
-
         // Set LAYER based on the chain ID.
         if (_chainId == ARBChains.ETH_CHAINID || _chainId == ARBChains.ETH_SEP_CHAINID) {
             // Set the layer
@@ -77,8 +74,11 @@ contract JBArbitrumSucker is JBSucker {
             _chainId == ARBChains.ETH_CHAINID
                 ? ARBINBOX = IInbox(ARBAddresses.L1_ETH_INBOX)
                 : ARBINBOX = IInbox(ARBAddresses.L1_SEP_INBOX);
+        } else if (_chainId == ARBChains.ARB_CHAINID || _chainId == ARBChains.ARB_SEP_CHAINID) {
+            LAYER = JBLayer.L2;
+        } else {
+            revert ChainNotSupported();
         }
-        if (_chainId == ARBChains.ARB_CHAINID || _chainId == ARBChains.ARB_SEP_CHAINID) LAYER = JBLayer.L2;
 
         GATEWAYROUTER = JBArbitrumSuckerDeployer(msg.sender).gatewayRouter();
     }
@@ -95,17 +95,6 @@ contract JBArbitrumSucker is JBSucker {
         if (_chainId == ARBChains.ARB_CHAINID) return ARBChains.ETH_CHAINID;
         if (_chainId == ARBChains.ETH_SEP_CHAINID) return ARBChains.ARB_SEP_CHAINID;
         if (_chainId == ARBChains.ARB_SEP_CHAINID) return ARBChains.ETH_SEP_CHAINID;
-    }
-
-    //*********************************************************************//
-    // ------------------------ private views ---------------------------- //
-    //*********************************************************************//
-
-    /// @notice Returns true if the chainId is supported.
-    /// @return supported false/true if this is deployed on a supported chain.
-    function isSupportedChain(uint256 chainId) private pure returns (bool supported) {
-        return chainId == ARBChains.ETH_CHAINID || chainId == ARBChains.ETH_SEP_CHAINID
-            || chainId == ARBChains.ARB_CHAINID || chainId == ARBChains.ARB_SEP_CHAINID;
     }
 
     //*********************************************************************//
