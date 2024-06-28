@@ -21,6 +21,8 @@
     "@bananapus/core": "^0.0.18",
     "@bananapus/ownable": "^0.0.6",
     "@bananapus/permission-ids": "^0.0.9",
+    "@chainlink/contracts-ccip": "^1.4.0",
+    "@chainlink/local": "github:smartcontractkit/chainlink-local",
     "@openzeppelin/contracts": "^5.0.2",
     "@prb/math": "^4.0.2"
   },

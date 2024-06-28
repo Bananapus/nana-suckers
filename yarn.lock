@@ -39,7 +39,7 @@
     "@amplitude/types" "^1.10.2"
     tslib "^2.0.0"
 
-"@arbitrum/nitro-contracts@github:OffchainLabs/nitro-contracts":
+"@arbitrum/nitro-contracts@^1.0.0-beta.8", "@arbitrum/nitro-contracts@github:OffchainLabs/nitro-contracts":
   version "1.2.1"
   resolved "git+ssh://git@github.com/OffchainLabs/nitro-contracts.git#90037b996509312ef1addb3f9352457b8a99d6a6"
   dependencies:
@@ -47,6 +47,28 @@
     "@openzeppelin/contracts" "4.5.0"
     "@openzeppelin/contracts-upgradeable" "4.5.2"
     patch-package "^6.4.7"
+
+"@arbitrum/nitro-contracts@1.1.1":
+  version "1.1.1"
+  resolved "https://registry.npmjs.org/@arbitrum/nitro-contracts/-/nitro-contracts-1.1.1.tgz"
+  integrity sha512-4Tyk3XVHz+bm8UujUC78LYSw3xAxyYvBCxfEX4z3qE4/ww7Qck/rmce5gbHMzQjArEAzAP2YSfYIFuIFuRXtfg==
+  dependencies:
+    "@offchainlabs/upgrade-executor" "1.1.0-beta.0"
+    "@openzeppelin/contracts" "4.5.0"
+    "@openzeppelin/contracts-upgradeable" "4.5.2"
+    patch-package "^6.4.7"
+
+"@arbitrum/token-bridge-contracts@1.1.2":
+  version "1.1.2"
+  resolved "https://registry.npmjs.org/@arbitrum/token-bridge-contracts/-/token-bridge-contracts-1.1.2.tgz"
+  integrity sha512-k7AZXiB2HFecJ1KfaDBqgOKe3Loo1ttGLC7hUOVB+0YrihIR6cYpJRuqKSKK4YCy+FF21AUDtaG3x57OFM667Q==
+  dependencies:
+    "@arbitrum/nitro-contracts" "^1.0.0-beta.8"
+    "@offchainlabs/upgrade-executor" "1.1.0-beta.0"
+    "@openzeppelin/contracts" "4.8.3"
+    "@openzeppelin/contracts-upgradeable" "4.8.3"
+  optionalDependencies:
+    "@openzeppelin/upgrades-core" "^1.24.1"
 
 "@aws-crypto/sha256-js@1.2.2":
   version "1.2.2"
@@ -151,6 +173,18 @@
   resolved "https://registry.npmjs.org/@bananapus/permission-ids/-/permission-ids-0.0.9.tgz"
   integrity sha512-uueumnkERBlF4aWOQfLIls4F9ah0h3aZy2VkMJdKIuKXSTqWXN4rzyKlkatQnKPSrK0j9jMfBKJ8Q4sik5AhAw==
 
+"@chainlink/contracts-ccip@^1.4.0":
+  version "1.4.0"
+  resolved "https://registry.npmjs.org/@chainlink/contracts-ccip/-/contracts-ccip-1.4.0.tgz"
+  integrity sha512-8F0OpmXy73vSbOvnKPL0DcYLA6FTiwQSKw1+DQzKyBYVbFk4vtijzs+5Ts/Beu6EIPqXlmLq7WVFZFHiDOBjCg==
+  dependencies:
+    "@arbitrum/nitro-contracts" "1.1.1"
+    "@arbitrum/token-bridge-contracts" "1.1.2"
+    "@eth-optimism/contracts" "0.6.0"
+    "@openzeppelin/contracts" "4.9.3"
+    "@openzeppelin/contracts-upgradeable" "4.9.3"
+    "@scroll-tech/contracts" "0.1.0"
+
 "@chainlink/contracts@^1.0.0", "@chainlink/contracts@^1.1.1":
   version "1.1.1"
   resolved "https://registry.npmjs.org/@chainlink/contracts/-/contracts-1.1.1.tgz"
@@ -163,6 +197,12 @@
     "@openzeppelin/contracts-upgradeable" "4.9.3"
     "@scroll-tech/contracts" "0.1.0"
     semver "^7.6.2"
+
+"@chainlink/local@github:smartcontractkit/chainlink-local":
+  version "0.1.0"
+  resolved "git+ssh://git@github.com/smartcontractkit/chainlink-local.git#b3cc0c410ab4c65445bc42f0ef0524ea59a5d714"
+  dependencies:
+    "@chainlink/contracts-ccip" "^1.4.0"
 
 "@changesets/apply-release-plan@^6.1.4":
   version "6.1.4"
@@ -1090,15 +1130,10 @@
     table "^6.8.0"
     undici "^5.14.0"
 
-"@nomicfoundation/solidity-analyzer-linux-x64-gnu@0.1.1":
+"@nomicfoundation/solidity-analyzer-darwin-arm64@0.1.1":
   version "0.1.1"
-  resolved "https://registry.npmjs.org/@nomicfoundation/solidity-analyzer-linux-x64-gnu/-/solidity-analyzer-linux-x64-gnu-0.1.1.tgz"
-  integrity sha512-5WN7leSr5fkUBBjE4f3wKENUy9HQStu7HmWqbtknfXkkil+eNWiBV275IOlpXku7v3uLsXTOKpnnGHJYI2qsdA==
-
-"@nomicfoundation/solidity-analyzer-linux-x64-musl@0.1.1":
-  version "0.1.1"
-  resolved "https://registry.npmjs.org/@nomicfoundation/solidity-analyzer-linux-x64-musl/-/solidity-analyzer-linux-x64-musl-0.1.1.tgz"
-  integrity sha512-KdYMkJOq0SYPQMmErv/63CwGwMm5XHenEna9X9aB8mQmhDBrYrlAOSsIPgFCUSL0hjxE3xHP65/EPXR/InD2+w==
+  resolved "https://registry.npmjs.org/@nomicfoundation/solidity-analyzer-darwin-arm64/-/solidity-analyzer-darwin-arm64-0.1.1.tgz"
+  integrity sha512-KcTodaQw8ivDZyF+D76FokN/HdpgGpfjc/gFCImdLUyqB6eSWVaZPazMbeAjmfhx3R0zm/NYVzxwAokFKgrc0w==
 
 "@nomicfoundation/solidity-analyzer@^0.1.0":
   version "0.1.1"
@@ -1155,6 +1190,11 @@
   resolved "https://registry.npmjs.org/@openzeppelin/contracts-upgradeable/-/contracts-upgradeable-4.7.3.tgz"
   integrity sha512-+wuegAMaLcZnLCJIvrVUDzA9z/Wp93f0Dla/4jJvIhijRrPabjQbZe6fWiECLaJyfn5ci9fqf9vTw3xpQOad2A==
 
+"@openzeppelin/contracts-upgradeable@4.8.3":
+  version "4.8.3"
+  resolved "https://registry.npmjs.org/@openzeppelin/contracts-upgradeable/-/contracts-upgradeable-4.8.3.tgz"
+  integrity sha512-SXDRl7HKpl2WDoJpn7CK/M9U4Z8gNXDHHChAKh0Iz+Wew3wu6CmFYBeie3je8V0GSXZAIYYwUktSrnW/kwVPtg==
+
 "@openzeppelin/contracts-upgradeable@4.9.3":
   version "4.9.3"
   resolved "https://registry.npmjs.org/@openzeppelin/contracts-upgradeable/-/contracts-upgradeable-4.9.3.tgz"
@@ -1179,6 +1219,11 @@
   version "4.7.3"
   resolved "https://registry.npmjs.org/@openzeppelin/contracts/-/contracts-4.7.3.tgz"
   integrity sha512-dGRS0agJzu8ybo44pCIf3xBaPQN/65AIXNgK8+4gzKd5kbvlqyxryUYVLJv7fK98Seyd2hDZzVEHSWAh0Bt1Yw==
+
+"@openzeppelin/contracts@4.8.3":
+  version "4.8.3"
+  resolved "https://registry.npmjs.org/@openzeppelin/contracts/-/contracts-4.8.3.tgz"
+  integrity sha512-bQHV8R9Me8IaJoJ2vPG4rXcL7seB7YVuskr4f+f5RyOStSZetwzkWtoqDMl5erkBJy0lDRUnIR2WIkPiC0GJlg==
 
 "@openzeppelin/contracts@4.9.3":
   version "4.9.3"
@@ -1227,7 +1272,7 @@
     lodash "^4.17.19"
     node-fetch "^2.6.0"
 
-"@openzeppelin/upgrades-core@^1.27.0":
+"@openzeppelin/upgrades-core@^1.24.1", "@openzeppelin/upgrades-core@^1.27.0":
   version "1.33.1"
   resolved "https://registry.npmjs.org/@openzeppelin/upgrades-core/-/upgrades-core-1.33.1.tgz"
   integrity sha512-YRxIRhTY1b+j7+NUUu8Uuem5ugxKexEMVd8dBRWNgWeoN1gS1OCrhgUg0ytL+54vzQ+SGWZDfNnzjVuI1Cj1Zw==
@@ -1524,15 +1569,10 @@
     yargs "^17.7.2"
     yesno "^0.4.0"
 
-"@swc/core-linux-x64-gnu@1.3.75":
+"@swc/core-darwin-arm64@1.3.75":
   version "1.3.75"
-  resolved "https://registry.npmjs.org/@swc/core-linux-x64-gnu/-/core-linux-x64-gnu-1.3.75.tgz"
-  integrity sha512-If7UpAhnPduMmtC+TSgPpZ1UXZfp2hIpjUFxpeCmHHYLS6Fn/2GZC5hpEiu+wvFJF0hzPh93eNAHa9gUxGUG+w==
-
-"@swc/core-linux-x64-musl@1.3.75":
-  version "1.3.75"
-  resolved "https://registry.npmjs.org/@swc/core-linux-x64-musl/-/core-linux-x64-musl-1.3.75.tgz"
-  integrity sha512-HOhxX0YNHTElCZqIviquka3CGYTN8rSQ6BdFfSk/K0O+ZEHx3qGte0qr+gGLPF/237GxreUkp3OMaWKuURtuCg==
+  resolved "https://registry.npmjs.org/@swc/core-darwin-arm64/-/core-darwin-arm64-1.3.75.tgz"
+  integrity sha512-anDnx9L465lGbjB2mvcV54NGHW6illr0IDvVV7JmkabYUVneaRdQvTr0tbHv3xjHnjrK1wuwVOHKV0LcQF2tnQ==
 
 "@swc/core@>=1.2.50", "@swc/core@1.3.75":
   version "1.3.75"
@@ -3573,6 +3613,11 @@ fs@^0.0.1-security:
   version "0.0.1-security"
   resolved "https://registry.npmjs.org/fs/-/fs-0.0.1-security.tgz"
   integrity sha512-3XY9e1pP0CVEUCdj5BmfIZxRBTSDycnbqhIOGec9QYtmVH2fbLpj86CFWkrNOkt/Fvty4KZG5lTglL9j/gJ87w==
+
+fsevents@~2.3.2:
+  version "2.3.3"
+  resolved "https://registry.npmjs.org/fsevents/-/fsevents-2.3.3.tgz"
+  integrity sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==
 
 function-bind@^1.1.2:
   version "1.1.2"
