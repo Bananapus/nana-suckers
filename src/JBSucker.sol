@@ -185,7 +185,7 @@ abstract contract JBSucker is JBPermissioned, IJBSucker {
     /// @notice Receive a merkle root for a terminal token from the remote project.
     /// @dev This can only be called by the messenger contract on the local chain, with a message from the remote peer.
     /// @param root The merkle root, token, and amount being received.
-    function fromRemote(JBMessageRoot calldata root) external payable {
+    function fromRemote(JBMessageRoot calldata root) external payable virtual {
         // Make sure that the message came from our peer.
         if (!_isRemotePeer(msg.sender)) {
             revert NOT_PEER();
