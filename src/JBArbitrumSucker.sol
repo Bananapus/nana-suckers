@@ -61,7 +61,7 @@ contract JBArbitrumSucker is JBSucker {
         IJBPermissions permissions,
         address peer,
         JBAddToBalanceMode atbMode
-    ) JBSucker(directory, tokens, permissions, peer, atbMode, IJBSuckerDeployer(msg.sender).TEMP_ID_STORE()) {
+    ) JBSucker(directory, tokens, permissions, peer, atbMode, IJBSuckerDeployer(msg.sender).TEMP_PROJECT_ID()) {
         // Layer specific properties
         uint256 _chainId = block.chainid;
 

@@ -40,15 +40,15 @@ contract JBArbitrumSuckerDeployer is JBPermissioned, IJBSuckerDeployer {
     JBLayer public immutable LAYER;
 
     /// @notice Only this address can configure this deployer, can only be used once.
-    address immutable LAYER_SPECIFIC_CONFIGURATOR;
+    address immutable ADMIN_TO_SET_CONSTANTS;
 
     /// @notice A temporary storage slot used by suckers to maintain deterministic deploys.
-    uint256 public TEMP_ID_STORE;
+    uint256 public TEMP_PROJECT_ID;
 
-    constructor(IJBDirectory directory, IJBTokens tokens, IJBPermissions permissions, address _configurator)
+    constructor(IJBDirectory directory, IJBTokens tokens, IJBPermissions permissions, address _admin)
         JBPermissioned(permissions)
     {
-        LAYER_SPECIFIC_CONFIGURATOR = _configurator;
+        ADMIN_TO_SET_CONSTANTS = _admin;
         DIRECTORY = directory;
         TOKENS = tokens;
     }
@@ -62,7 +62,7 @@ contract JBArbitrumSuckerDeployer is JBPermissioned, IJBSuckerDeployer {
         salt = keccak256(abi.encodePacked(msg.sender, salt));
 
         // Set for a callback to this contract.
-        TEMP_ID_STORE = localProjectId;
+        TEMP_PROJECT_ID = localProjectId;
 
         sucker = IJBSucker(
             address(
@@ -72,7 +72,7 @@ contract JBArbitrumSuckerDeployer is JBPermissioned, IJBSuckerDeployer {
 
         // TODO: See if resetting this value is cheaper than deletion
         // Delete after callback should complete.
-        /* delete TEMP_ID_STORE; */
+        /* delete TEMP_PROJECT_ID; */
 
         isSucker[address(sucker)] = true;
     }
@@ -94,7 +94,7 @@ contract JBArbitrumSuckerDeployer is JBPermissioned, IJBSuckerDeployer {
     /* /// @notice handles some layer specific configuration that can't be done in the constructor otherwise deployment addresses would change.
     /// @notice messenger the OPMesssenger on this layer.
     /// @notice bridge the OPStandardBridge on this layer.
-    function configureLayerSpecific(OPMessenger messenger, OPStandardBridge bridge) external {
+    function setChainSpecificConstants(OPMessenger messenger, OPStandardBridge bridge) external {
         if (address(MESSENGER) != address(0) || address(BRIDGE) != address(0)) {
             revert ALREADY_CONFIGURED();
         }

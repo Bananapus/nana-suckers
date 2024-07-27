@@ -229,7 +229,7 @@ contract CCIPSuckerForkedTests is TestBaseWorkflow {
             new JBCCIPSuckerDeployer{salt: "salty"}(jbDirectory(), jbTokens(), jbPermissions(), address(this));
 
         // Set the remote chain as arb-sep, which also grabs the chain selector from CCIPHelper for deployer
-        suckerDeployer.configureLayerSpecific(421614);
+        suckerDeployer.setChainSpecificConstants(421614);
 
         // deploy our first sucker (on sepolia, the current fork, or "L1").
         suckerGlobal = suckerDeployer.createForSender(1, "salty");
@@ -268,7 +268,7 @@ contract CCIPSuckerForkedTests is TestBaseWorkflow {
         vm.stopPrank();
         suckerDeployer2 =
             new JBCCIPSuckerDeployer{salt: "salty"}(jbDirectory(), jbTokens(), jbPermissions(), address(this));
-        suckerDeployer2.configureLayerSpecific(11155111);
+        suckerDeployer2.setChainSpecificConstants(11155111);
 
         // Deploy the sucker on L2.
         vm.prank(address(suckerDeployer2));

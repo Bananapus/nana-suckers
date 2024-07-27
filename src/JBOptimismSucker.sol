@@ -47,7 +47,7 @@ contract JBOptimismSucker is JBSucker {
         IJBPermissions permissions,
         address peer,
         JBAddToBalanceMode atbMode
-    ) JBSucker(directory, tokens, permissions, peer, atbMode, IJBSuckerDeployer(msg.sender).TEMP_ID_STORE()) {
+    ) JBSucker(directory, tokens, permissions, peer, atbMode, IJBSuckerDeployer(msg.sender).TEMP_PROJECT_ID()) {
         // Fetch the messenger and bridge by doing a callback to the deployer contract.
         OPMESSENGER = JBOptimismSuckerDeployer(msg.sender).MESSENGER();
         OPBRIDGE = JBOptimismSuckerDeployer(msg.sender).BRIDGE();

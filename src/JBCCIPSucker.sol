@@ -25,23 +25,30 @@ import {IRouterClient} from "@chainlink/contracts-ccip/src/v0.8/ccip/interfaces/
 import {CCIPHelper} from "src/libraries/CCIPHelper.sol";
 import {IWETH9} from "./interfaces/IWETH9.sol";
 
-/// @notice A `JBSucker` implementation to suck tokens between chains with Chainlink CCIP
+/// @notice A `JBSucker` implementation which uses Chainlink's [CCIP](https://docs.chain.link/ccip) to bridge tokens and send messages (merkle roots) between chains.
 contract JBCCIPSucker is JBSucker, ModifiedReceiver {
     using MerkleLib for MerkleLib.Tree;
     using BitMaps for BitMaps.BitMap;
 
+    /// @notice The CCIP router contract to use for sending messages and tokens across chains.
     IRouterClient public ROUTER;
-    // TODO: Revert this back to 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2 for prod
-    address public immutable WETH;
+
+    /// @notice The chain ID that the remote peer is located on.
     uint256 public immutable REMOTE_CHAIN_ID;
+
+    /// @notice The CCIP selector (a CCIP-specific ID) for the remote chain.
+    /// @dev To find a chain's CCIP selector, see [CCIP Supported Networks](https://docs.chain.link/ccip/supported-networks).
     uint64 public immutable REMOTE_CHAIN_SELECTOR;
 
-    error MUST_PAY_BRIDGE();
-    error NATIVE_ON_ETH_ONLY();
+    // TODO: Change this to `0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2` for production.
+    address public immutable WETH;
+
+    error MUST_PAY_ROUTER_FEE();
+    error LOCAL_NATIVE_ON_MAINNET_ONLY();
     error REMOTE_OF_NATIVE_MUST_BE_WETH();
-    error INVALID_TOKEN_TO_DESTINATION();
-    error NotEnoughBalance(uint256 balance, uint256 fees);
-    error FailedToRefundFee();
+    error TOKEN_NOT_SUPPORTED();
+    error InsufficientMaxRouterFee(uint256 balance, uint256 fees);
+    error FailedToRefund();
 
     //*********************************************************************//
     // ---------------------------- constructor -------------------------- //
@@ -53,11 +60,11 @@ contract JBCCIPSucker is JBSucker, ModifiedReceiver {
         IJBPermissions permissions,
         address peer,
         JBAddToBalanceMode atbMode
-    ) JBSucker(directory, tokens, permissions, peer, atbMode, IJBCCIPSuckerDeployer(msg.sender).TEMP_ID_STORE()) {
+    ) JBSucker(directory, tokens, permissions, peer, atbMode, IJBCCIPSuckerDeployer(msg.sender).TEMP_PROJECT_ID()) {
         REMOTE_CHAIN_ID = IJBCCIPSuckerDeployer(msg.sender).REMOTE_CHAIN_ID();
         REMOTE_CHAIN_SELECTOR = IJBCCIPSuckerDeployer(msg.sender).REMOTE_CHAIN_SELECTOR();
         ROUTER = IRouterClient(i_ccipRouter);
-        // TODO: Remove this init and revert this back to 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2 for prod
+        // TODO: Change this to `0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2` for production.
         WETH = CCIPHelper.wethOfChain(block.chainid);
     }
 
@@ -65,9 +72,10 @@ contract JBCCIPSucker is JBSucker, ModifiedReceiver {
     /// @param map The local and remote terminal token addresses to map, and minimum amount/gas limits for bridging them.
     function mapToken(JBTokenMapping calldata map) public override {
         address token = map.localToken;
-        bool isNative = map.localToken == JBConstants.NATIVE_TOKEN;
 
-        /* // If the token being mapped is the native token, the `remoteToken` must also be the native token.
+        // TODO: Can this be deleted? Why is it commented out?
+        /* bool isNative = map.localToken == JBConstants.NATIVE_TOKEN;
+        // If the token being mapped is the native token, the `remoteToken` must also be the native token.
         // The native token can also be mapped to the 0 address, which is used to disable native token bridging.
         if (isNative && map.remoteToken != JBConstants.NATIVE_TOKEN && map.remoteToken != address(0)) {
             revert INVALID_NATIVE_REMOTE_ADDRESS(map.remoteToken);
@@ -78,10 +86,11 @@ contract JBCCIPSucker is JBSucker, ModifiedReceiver {
             revert BELOW_MIN_GAS(MESSENGER_ERC20_MIN_GAS_LIMIT, map.minGas);
         }
 
-        // The caller must be the project owner or have the `QUEUE_RULESETS` permission from them.
+        // The caller must be the project owner or have their permission to `MAP_SUCKER_TOKEN`s.
         _requirePermissionFrom(DIRECTORY.PROJECTS().ownerOf(PROJECT_ID), PROJECT_ID, JBPermissionIds.MAP_SUCKER_TOKEN);
 
-        // If the remote token is being set to the 0 address (which disables bridging), send any remaining outbox funds to the remote chain.
+        // If bridging is being disabled, send any remaining outbox funds to the remote chain.
+        // Note: setting the remote token to the 0 address disables bridging.
         if (map.remoteToken == address(0) && outbox[token].balance != 0) _sendRoot(0, token, remoteTokenFor[token]);
 
         // Update the token mapping.
@@ -93,19 +102,22 @@ contract JBCCIPSucker is JBSucker, ModifiedReceiver {
     // --------------------- internal transactions ----------------------- //
     //*********************************************************************//
 
-    /// @notice
-    /// @param transportPayment the amount of `msg.value` that is going to get paid for sending this message.
-    /// @param token The token to bridge the outbox tree for.
+    /// @notice Send the outbox root for the specified token to the remote peer.
+    /// @dev For more information about router fees, see [CCIP Billing](https://docs.chain.link/ccip/billing).
+    /// @param maxRouterFee The maximum amount (out of `msg.value`) to pay the router's message fee. Any remaining value will be refunded to the caller.
+    /// @param token The token whose outbox tree is being bridged.
     /// @param remoteToken Information about the remote token being bridged to.
-    function _sendRoot(uint256 transportPayment, address token, JBRemoteToken memory remoteToken) internal override {
+    function _sendRoot(uint256 maxRouterFee, address token, JBRemoteToken memory remoteToken) internal override {
         bool localIsNative = token == JBConstants.NATIVE_TOKEN;
-        // TODO: change to only check chainid 1 for prod
+        // TODO: Only check for `chainId == 1` in production.
         bool willSendWeth = localIsNative && (block.chainid == 1 || block.chainid == 11155111);
+        // TODO: Should we inline this?
         address remoteTokenAddress = remoteToken.addr;
 
-        // Make sure we are attempting to pay the bridge
-        if (transportPayment == 0) {
-            revert MUST_PAY_BRIDGE();
+        // Revert if the caller did not include a max router fee.
+        // TODO: Should we add ` || msg.value < maxRouterFee`?
+        if (maxRouterFee == 0) {
+            revert MUST_PAY_ROUTER_FEE();
         }
 
         // Ensure the token is mapped to an address on the remote chain.
@@ -113,137 +125,140 @@ contract JBCCIPSucker is JBSucker, ModifiedReceiver {
             revert TOKEN_NOT_MAPPED(token);
         }
 
-        // TODO: re-enable a similar check before prod?
-        // Only support native backing token (and wrapping) if on Ethereum
-        // if (block.chainid != 1 && localIsNative) revert NATIVE_ON_ETH_ONLY();
+        // TODO: Should we add something like this back for production?
+        // Only support local native tokens (and wrapping) on Ethereum mainnet.
+        // if (block.chainid != 1 && localIsNative) revert LOCAL_NATIVE_ON_MAINNET_ONLY();
 
-        // Cannot bridge native tokens unless wrapped
+        // Revert if the remote token is the native token – we can only bridge wrapped native tokens.
         if (remoteTokenAddress == JBConstants.NATIVE_TOKEN) revert REMOTE_OF_NATIVE_MUST_BE_WETH();
 
-        // Check that CCIP supports the token being transferred.
+        // Make sure the router supports the tokens being bridged.
         address[] memory supportedForTransferList = ROUTER.getSupportedTokens(REMOTE_CHAIN_SELECTOR);
-
         if (!_isTokenInList(supportedForTransferList, willSendWeth ? WETH : token)) {
-            revert INVALID_TOKEN_TO_DESTINATION();
+            revert TOKEN_NOT_SUPPORTED();
         }
 
-        // Get the amount to send and then clear it from the outbox tree.
+        // Get the amount being bridged, then clear it from the outbox tree.
         uint256 amount = outbox[token].balance;
         delete outbox[token].balance;
 
         // Increment the outbox tree's nonce.
         uint64 nonce = ++outbox[token].nonce;
 
-        bytes32 _root = outbox[token].tree.root();
+        // Get the outbox tree's root.
+        bytes32 root = outbox[token].tree.root();
 
-        // Set the token amounts
+        // Add the token and amount to an array for the CCIP message.
         Client.EVMTokenAmount[] memory tokenAmounts = new Client.EVMTokenAmount[](1);
         tokenAmounts[0] = Client.EVMTokenAmount({token: willSendWeth ? WETH : token, amount: amount});
 
-        // Create an EVM2AnyMessage struct in memory with necessary information for sending a cross-chain message
+        // Create our CCIP message with the root and tokens being bridged.
         Client.EVM2AnyMessage memory evm2AnyMessage = Client.EVM2AnyMessage({
             receiver: abi.encode(address(this)),
             data: abi.encode(
                 JBMessageRoot({
                     token: remoteToken.addr,
                     amount: amount,
-                    remoteRoot: JBInboxTreeRoot({nonce: nonce, root: _root})
+                    remoteRoot: JBInboxTreeRoot({nonce: nonce, root: root})
                 })
             ),
             tokenAmounts: tokenAmounts,
             extraArgs: Client._argsToBytes(
-                // Additional arguments, setting gas limit
+                // Set the gas limit as an extra argument.
                 Client.EVMExtraArgsV1({gasLimit: MESSENGER_BASE_GAS_LIMIT + remoteToken.minGas})
             ),
-            // Pay the fee using the native asset.
+            // Pay the router fee using native tokens (from the `msg.value`).
             feeToken: address(0)
         });
 
-        // Get the fee required to send the CCIP message
+        // Calculate the router fee for our message.
         uint256 fees = ROUTER.getFee({destinationChainSelector: REMOTE_CHAIN_SELECTOR, message: evm2AnyMessage});
 
-        if (fees > transportPayment) {
-            revert NotEnoughBalance(transportPayment, fees);
+        // If the caller didn't send enough to cover the router fee, revert.
+        if (fees > maxRouterFee) {
+            revert InsufficientMaxRouterFee(maxRouterFee, fees);
         }
 
-        // Wrap the token if it's native
+        // If the local token is the native token, wrap it.
         if (willSendWeth) IWETH9(WETH).deposit{value: amount}();
 
-        // approve the Router to spend tokens on contract's behalf. It will spend the amount of the given token
+        // Give the router approval to spend `amount` tokens on this contract's behalf.
+        // `amount` is the amount being bridged.
         SafeERC20.forceApprove(IERC20(willSendWeth ? WETH : token), address(ROUTER), amount);
 
-        // TODO: Handle this messageId- for later version with message retries
-        // Send the message through the ROUTER and store the returned message ID
+        // TODO: When we add message retried, we'll need to handle this `messageId`.
+        // Send the message.
         /* messageId =  */
         ROUTER.ccipSend{value: fees}({destinationChainSelector: REMOTE_CHAIN_SELECTOR, message: evm2AnyMessage});
 
-        // Keeps our tree count zero indexed
-        uint256 _index = outbox[token].tree.count - 1;
+        // Use a zero-indexed tree count in the event.
+        uint256 index = outbox[token].tree.count - 1;
 
-        // Emit an event for the relayers to watch for.
-        emit RootToRemote(_root, token, _index, nonce);
+        // Emit an event for relayers to watch for.
+        emit RootToRemote(root, token, index, nonce);
 
-        // Refund remaining balance.
+        // Return the remaining `msg.value` to the caller now that fees have been paid.
         (bool sent,) = msg.sender.call{value: msg.value - fees}("");
-        if (!sent) revert FailedToRefundFee();
+        if (!sent) revert FailedToRefund();
     }
 
-    /// @notice Checks if targetToken is in tokenList.
-    /// @param tokenList address[] of tokens supported by the router on the current chain.
-    /// @param targetToken address to check for tokenList inclusion.
+    /// @notice Checks whether the `targetToken` is in the `tokenList`.
+    /// @param tokenList An `address[]` of tokens supported by the router.
+    /// @param targetToken The token to check for in the list.
     function _isTokenInList(address[] memory tokenList, address targetToken) internal pure returns (bool) {
-        // Iterate through the tokenList
         for (uint256 i = 0; i < tokenList.length; i++) {
             if (tokenList[i] == targetToken) {
-                // Target token found in the list
                 return true;
             }
         }
 
-        // Target token not found in the list
         return false;
     }
 
-    /// @notice Override this function in your implementation.
-    /// @param message Any2EVMMessage
+    /// @notice Receive a CCIP message from the remote peer.
+    /// @param message An `Any2EVMMessage` from the router.
     function _ccipReceive(Client.Any2EVMMessage memory message) internal override onlyRouter {
         JBMessageRoot memory root = abi.decode(message.data, (JBMessageRoot));
 
+        // If the message wasn't sent by this sucker's peer (which has the same address as this contract), revert.
         address origin = abi.decode(message.sender, (address));
 
         if (origin != address(this)) revert NOT_PEER();
 
-        // Increase the outstanding amount to be added to the project's balance by the amount being received.
+        // Increase how much can be added to the project's balance by the amount received.
+        // TODO: Should this check for atb mode? I don't remember exactly how this worked.
         amountToAddToBalance[root.token] += root.amount;
 
-        // If the received tree's nonce is greater than the current inbox tree's nonce, update the inbox tree.
-        // We can't revert because this could be a native token transfer. If we reverted, we would lose the native tokens.
+        // If the received tree has a greater nonce than the current inbox tree, update the inbox tree.
+        // Note: We can't revert because this could be a native token transfer. If we reverted, we would lose the native tokens.
+        // TODO: Could we revert here since `_sendRoot(…)` reverts when the remote token is `JBConstants.NATIVE_TOKEN`? Not essential...
         if (root.remoteRoot.nonce > inbox[root.token].nonce) {
             inbox[root.token] = root.remoteRoot;
             emit NewInboxTreeRoot(root.token, root.remoteRoot.nonce, root.remoteRoot.root);
         }
     }
 
-    /// @notice This function is not in use for the CCIP sucker.
+    /// @notice Always reverts.
+    /// @dev The CCIP sucker does not use `fromRemote(…)` because the router calls `_ccipReceive(…)` directly.
     function fromRemote(JBMessageRoot calldata) external payable override {
         revert();
     }
 
-    /// @notice Checks if the `sender` (`msg.sender`) is a valid representative of the remote peer.
+    /// @notice Checks whether `sender` (`msg.sender`) is a valid representative of the remote peer.
     /// @param sender The message's sender.
     function _isRemotePeer(address sender) internal view override returns (bool _valid) {
         if (sender != address(i_ccipRouter)) return false;
 
+        // Decode the CCIP message from the router's calldata and extract the origin address.
         Client.Any2EVMMessage memory message = abi.decode(msg.data, (Client.Any2EVMMessage));
         address origin = abi.decode(message.sender, (address));
 
         return origin == PEER;
     }
 
-    /// @notice Returns the chain on which the peer is located.
-    /// @return chainId of the peer.
+    /// @notice Returns the peer sucker's chain ID.
+    /// @return chainId The remote chain ID.
     function peerChainID() external view override returns (uint256 chainId) {
-        // Return the remote chain id
         return REMOTE_CHAIN_ID;
     }
 }
