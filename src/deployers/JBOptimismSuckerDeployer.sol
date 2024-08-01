@@ -16,7 +16,6 @@ import {IJBSuckerDeployer} from "./../interfaces/IJBSuckerDeployer.sol";
 
 /// @notice An `IJBSuckerDeployerFeeless` implementation to deploy `JBOptimismSucker` contracts.
 contract JBOptimismSuckerDeployer is JBPermissioned, IJBSuckerDeployer {
-    error ONLY_SUCKERS();
     error ALREADY_CONFIGURED();
 
     /// @notice The directory of terminals and controllers for projects.

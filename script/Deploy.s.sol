@@ -193,7 +193,7 @@ contract DeployScript is Script, Sphinx {
 
         // Check if we should do the L2 portion.
         // ARB & ARB Sepolia.
-        if (block.chainid == 10 || block.chainid == 421614) {
+        if (block.chainid == 42161 || block.chainid == 421614) {
             JBArbitrumSuckerDeployer _arbDeployer = new JBArbitrumSuckerDeployer{salt: ARB_SALT}(
                 core.directory, core.tokens, core.permissions, safeAddress()
             );

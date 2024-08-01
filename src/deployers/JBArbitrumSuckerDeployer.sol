@@ -20,7 +20,6 @@ import {IArbGatewayRouter} from "../interfaces/IArbGatewayRouter.sol";
 
 /// @notice An `IJBSuckerDeployerFeeless` implementation to deploy `JBOptimismSucker` contracts.
 contract JBArbitrumSuckerDeployer is JBPermissioned, IJBSuckerDeployer {
-    error ONLY_SUCKERS();
     error ALREADY_CONFIGURED();
 
     /// @notice The directory of terminals and controllers for projects.
@@ -69,10 +68,6 @@ contract JBArbitrumSuckerDeployer is JBPermissioned, IJBSuckerDeployer {
                 new JBArbitrumSucker{salt: salt}(DIRECTORY, TOKENS, PERMISSIONS, address(0), JBAddToBalanceMode.MANUAL)
             )
         );
-
-        // TODO: See if resetting this value is cheaper than deletion
-        // Delete after callback should complete.
-        /* delete TEMP_ID_STORE; */
 
         isSucker[address(sucker)] = true;
     }

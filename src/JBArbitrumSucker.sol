@@ -65,9 +65,6 @@ contract JBArbitrumSucker is JBSucker {
         // Layer specific properties
         uint256 _chainId = block.chainid;
 
-        // If LAYER is left uninitialized, the chain is not currently supported.
-        if (!isSupportedChain(_chainId)) revert ChainNotSupported();
-
         // Set LAYER based on the chain ID.
         if (_chainId == ARBChains.ETH_CHAINID || _chainId == ARBChains.ETH_SEP_CHAINID) {
             // Set the layer
@@ -77,8 +74,11 @@ contract JBArbitrumSucker is JBSucker {
             _chainId == ARBChains.ETH_CHAINID
                 ? ARBINBOX = IInbox(ARBAddresses.L1_ETH_INBOX)
                 : ARBINBOX = IInbox(ARBAddresses.L1_SEP_INBOX);
+        } else if (_chainId == ARBChains.ARB_CHAINID || _chainId == ARBChains.ARB_SEP_CHAINID) {
+            LAYER = JBLayer.L2;
+        } else {
+            revert ChainNotSupported();
         }
-        if (_chainId == ARBChains.ARB_CHAINID || _chainId == ARBChains.ARB_SEP_CHAINID) LAYER = JBLayer.L2;
 
         GATEWAYROUTER = JBArbitrumSuckerDeployer(msg.sender).gatewayRouter();
     }
@@ -98,17 +98,6 @@ contract JBArbitrumSucker is JBSucker {
     }
 
     //*********************************************************************//
-    // ------------------------ private views ---------------------------- //
-    //*********************************************************************//
-
-    /// @notice Returns true if the chainId is supported.
-    /// @return supported false/true if this is deployed on a supported chain.
-    function isSupportedChain(uint256 chainId) private pure returns (bool supported) {
-        return chainId == ARBChains.ETH_CHAINID || chainId == ARBChains.ETH_SEP_CHAINID
-            || chainId == ARBChains.ARB_CHAINID || chainId == ARBChains.ARB_SEP_CHAINID;
-    }
-
-    //*********************************************************************//
     // --------------------- internal transactions ----------------------- //
     //*********************************************************************//
 
@@ -117,11 +106,6 @@ contract JBArbitrumSucker is JBSucker {
     /// @param token The token to bridge the outbox tree for.
     /// @param remoteToken Information about the remote token being bridged to.
     function _sendRoot(uint256 transportPayment, address token, JBRemoteToken memory remoteToken) internal override {
-        // TODO: Handle the `transportPayment`
-        // if (transportPayment == 0) {
-        //     revert UNEXPECTED_MSG_VALUE();
-        // }
-
         // Get the amount to send and then clear it.
         uint256 amount = outbox[token].balance;
         delete outbox[token].balance;
@@ -129,9 +113,7 @@ contract JBArbitrumSucker is JBSucker {
         // Increment the outbox tree's nonce.
         uint64 nonce = ++outbox[token].nonce;
 
-        if (remoteToken.addr == address(0)) {
-            revert TOKEN_NOT_MAPPED(token);
-        }
+        if (remoteToken.addr == address(0)) revert TOKEN_NOT_MAPPED(token);
 
         // Build the calldata that will be send to the peer. This will call `JBSucker.fromRemote` on the remote peer.
         bytes memory data = abi.encodeCall(
@@ -147,6 +129,9 @@ contract JBArbitrumSucker is JBSucker {
 
         // Depending on which layer we are on, send the call to the other layer.
         if (LAYER == JBLayer.L1) {
+            // Bridge must be paid L1 -> L2
+            if (transportPayment == 0) revert UNEXPECTED_MSG_VALUE();
+
             _toL2(token, transportPayment, amount, data, remoteToken);
         } else {
             _toL1(token, amount, data, remoteToken);
@@ -165,9 +150,7 @@ contract JBArbitrumSucker is JBSucker {
         uint256 nativeValue;
 
         // Revert if there's a `msg.value`. Sending a message to L1 does not require any payment.
-        if (msg.value != 0) {
-            revert UNEXPECTED_MSG_VALUE();
-        }
+        if (msg.value != 0) revert UNEXPECTED_MSG_VALUE();
 
         // If the token is an ERC-20, bridge it to the peer.
         if (token != JBConstants.NATIVE_TOKEN) {

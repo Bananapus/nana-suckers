@@ -13,6 +13,7 @@ contract JBSuckerRegistry is JBOwnable, IJBSuckerRegistry {
     using EnumerableMap for EnumerableMap.AddressToUintMap;
 
     error INVALID_DEPLOYER(address deployer);
+    error NO_SUCKER_CONFIG();
 
     /// @notice A constant indicating that this sucker exists and belongs to a specific project.
     uint256 constant SUCKER_EXISTS = 1;
@@ -88,6 +89,8 @@ contract JBSuckerRegistry is JBOwnable, IJBSuckerRegistry {
             projectId: projectId,
             permissionId: JBPermissionIds.DEPLOY_SUCKERS
         });
+
+        if (configurations.length == 0) revert NO_SUCKER_CONFIG();
 
         // Create an array to store the suckers as they are deployed.
         suckers = new address[](configurations.length);

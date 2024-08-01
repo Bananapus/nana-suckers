@@ -2,11 +2,19 @@
 pragma solidity ^0.8.0;
 
 import {JBTokenMapping} from "../structs/JBTokenMapping.sol";
+import {JBClaim} from "src/structs/JBClaim.sol";
+import {JBInboxTreeRoot} from "src/structs/JBInboxTreeRoot.sol";
 
 interface IJBSucker {
+    function claim(JBClaim calldata claimData) external;
+
+    function claim(JBClaim[] calldata claims) external;
+
     function PEER() external view returns (address);
 
     function peerChainID() external view returns (uint256 chainId);
+
+    function inbox(address token) external view returns (uint64 nonce, bytes32 root);
 
     function isMapped(address token) external view returns (bool);
 
@@ -16,6 +24,8 @@ interface IJBSucker {
     function mapToken(JBTokenMapping calldata map) external;
 
     function mapTokens(JBTokenMapping[] calldata maps) external;
+
+    function toRemote(address token) external payable;
 
     event NewInboxTreeRoot(address indexed token, uint64 nonce, bytes32 root);
 

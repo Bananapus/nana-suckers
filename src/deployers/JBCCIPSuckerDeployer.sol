@@ -7,15 +7,18 @@ import {IJBPrices} from "@bananapus/core/src/interfaces/IJBPrices.sol";
 import {IJBDirectory} from "@bananapus/core/src/interfaces/IJBDirectory.sol";
 import {IJBRulesets} from "@bananapus/core/src/interfaces/IJBRulesets.sol";
 import {IJBTokens} from "@bananapus/core/src/interfaces/IJBTokens.sol";
-import {OPStandardBridge} from "../interfaces/OPStandardBridge.sol";
-import {OPMessenger} from "../interfaces/OPMessenger.sol";
-import {JBBaseSucker} from "../JBBaseSucker.sol";
+import {JBCCIPSucker} from "../JBCCIPSucker.sol";
 import {JBAddToBalanceMode} from "../enums/JBAddToBalanceMode.sol";
 import {IJBSucker} from "./../interfaces/IJBSucker.sol";
 import {IJBSuckerDeployer} from "./../interfaces/IJBSuckerDeployer.sol";
 
-contract JBBaseSuckerDeployer is JBPermissioned, IJBSuckerDeployer {
+import {CCIPHelper} from "src/libraries/CCIPHelper.sol";
+
+/// @notice An `IJBSuckerDeployer` implementation to deploy contracts.
+contract JBCCIPSuckerDeployer is JBPermissioned, IJBSuckerDeployer {
+    error ONLY_ADMIN();
     error ALREADY_CONFIGURED();
+    error NOT_CONFIGURED();
 
     /// @notice The directory of terminals and controllers for projects.
     IJBDirectory immutable DIRECTORY;
@@ -26,17 +29,17 @@ contract JBBaseSuckerDeployer is JBPermissioned, IJBSuckerDeployer {
     /// @notice Only this address can configure this deployer, can only be used once.
     address immutable LAYER_SPECIFIC_CONFIGURATOR;
 
-    /// @notice The messenger used to send messages between the local and remote sucker.
-    OPMessenger public MESSENGER;
-
-    /// @notice The bridge used to bridge tokens between the local and remote chain.
-    OPStandardBridge public BRIDGE;
-
     /// @notice A mapping of suckers deployed by this contract.
     mapping(address => bool) public isSucker;
 
     /// @notice A temporary storage slot used by suckers to maintain deterministic deploys.
     uint256 public TEMP_ID_STORE;
+
+    /// @notice Store the remote chain id
+    uint256 public REMOTE_CHAIN_ID;
+
+    /// @notice Store the remote chain id
+    uint64 public REMOTE_CHAIN_SELECTOR;
 
     constructor(IJBDirectory directory, IJBTokens tokens, IJBPermissions permissions, address _configurator)
         JBPermissioned(permissions)
@@ -52,13 +55,16 @@ contract JBBaseSuckerDeployer is JBPermissioned, IJBSuckerDeployer {
     /// @param salt The salt to use for the `create2` address.
     /// @return sucker The address of the new sucker.
     function createForSender(uint256 localProjectId, bytes32 salt) external returns (IJBSucker sucker) {
+        // Check layer specific properties first
+        if (REMOTE_CHAIN_ID == 0 || REMOTE_CHAIN_SELECTOR == 0) revert NOT_CONFIGURED();
+
         salt = keccak256(abi.encodePacked(msg.sender, salt));
 
         // Set for a callback to this contract.
         TEMP_ID_STORE = localProjectId;
 
         sucker = IJBSucker(
-            address(new JBBaseSucker{salt: salt}(DIRECTORY, TOKENS, PERMISSIONS, address(0), JBAddToBalanceMode.MANUAL))
+            address(new JBCCIPSucker{salt: salt}(DIRECTORY, TOKENS, PERMISSIONS, address(0), JBAddToBalanceMode.MANUAL))
         );
 
         // TODO: See if resetting this value is cheaper than deletion
@@ -69,15 +75,11 @@ contract JBBaseSuckerDeployer is JBPermissioned, IJBSuckerDeployer {
     }
 
     /// @notice handles some layer specific configuration that can't be done in the constructor otherwise deployment addresses would change.
-    /// @notice messenger the OPMesssenger on this layer.
-    /// @notice bridge the OPStandardBridge on this layer.
-    function configureLayerSpecific(OPMessenger messenger, OPStandardBridge bridge) external {
-        if (address(MESSENGER) != address(0) || address(BRIDGE) != address(0)) {
-            revert ALREADY_CONFIGURED();
-        }
-        // Configure these layer specific properties.
-        // This is done in a separate call to make the deployment code chain agnostic.
-        MESSENGER = messenger;
-        BRIDGE = bridge;
+    function configureLayerSpecific(uint256 remoteChainId) external {
+        // Only allow configurator to set properties - notice we don't restrict reconfiguration here
+        if (msg.sender != LAYER_SPECIFIC_CONFIGURATOR) revert ONLY_ADMIN();
+
+        REMOTE_CHAIN_ID = remoteChainId;
+        REMOTE_CHAIN_SELECTOR = CCIPHelper.selectorOfChain(remoteChainId);
     }
 }
