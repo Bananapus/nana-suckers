@@ -378,6 +378,7 @@ library MerkleLib {
                     if and(_index, shl(31, 1)) {
                         mstore(0, sload(add(TREE_SLOT, 31)))
                         mstore(0x20, Z_31)
+                        // slither-disable-start write-after-write
                         _current := keccak256(0, 0x40)
                         i := 31
                         break
@@ -385,6 +386,7 @@ library MerkleLib {
 
                     _current := Z_32
                     i := 32
+                    // slither-disable-end write-after-write
                     break
                 }
 

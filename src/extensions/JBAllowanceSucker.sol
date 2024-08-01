@@ -61,6 +61,7 @@ abstract contract JBAllowanceSucker is JBSucker {
 
         // Sanity check to make sure we actually received the reported amount.
         // Prevents a malicious terminal from reporting a higher amount than it actually sent.
+        // slither-disable-next-line incorrect-equality
         assert(_receivedAmount == _balanceOf(_token, address(this)) - _balanceBefore);
     }
 }

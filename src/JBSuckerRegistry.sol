@@ -49,6 +49,7 @@ contract JBSuckerRegistry is JBOwnable, IJBSuckerRegistry {
 
         for (uint256 _i = 0; _i < _n; _i++) {
             IJBSucker _sucker = IJBSucker(_suckers[_i]);
+            // slither-disable-next-line calls-loop
             _pairs[_i] =
                 JBSuckersPair({local: address(_sucker), remote: _sucker.PEER(), remoteChainId: _sucker.peerChainID()});
         }
@@ -104,13 +105,16 @@ contract JBSuckerRegistry is JBOwnable, IJBSuckerRegistry {
             }
 
             // Create the sucker.
+            // slither-disable-next-line reentrancy-event,calls-loop
             IJBSucker sucker = configurations[i].deployer.createForSender({localProjectId: projectId, salt: salt});
             suckers[i] = address(sucker);
 
             // Store the sucker as being deployed for this project.
+            // slither-disable-next-line unused-return
             _suckersOf[projectId].set(address(sucker), SUCKER_EXISTS);
 
             // Map the tokens for the sucker.
+            // slither-disable-next-line reentrancy-events,calls-loop
             sucker.mapTokens(configurations[i].mappings);
         }
 

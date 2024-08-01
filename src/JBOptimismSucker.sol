@@ -98,9 +98,11 @@ contract JBOptimismSucker is JBSucker {
         // If the token is an ERC20, bridge it to the peer.
         if (token != JBConstants.NATIVE_TOKEN) {
             // Approve the tokens bing bridged.
+            // slither-disable-next-line reentrancy-events
             SafeERC20.forceApprove(IERC20(token), address(OPBRIDGE), amount);
 
             // Bridge the tokens to the peer sucker.
+            // slither-disable-next-line reentrency-events,calls-loop
             OPBRIDGE.bridgeERC20To({
                 localToken: token,
                 remoteToken: remoteToken.addr,
@@ -118,7 +120,7 @@ contract JBOptimismSucker is JBSucker {
         uint256 _index = outbox[token].tree.count - 1;
 
         // Send the message to the peer with the redeemed ETH.
-        // slither-disable-next-line arbitrary-send-eth
+        // slither-disable-next-line arbitrary-send-eth,reentrency-events,calls-loop
         OPMESSENGER.sendMessage{value: nativeValue}(
             PEER,
             abi.encodeCall(

@@ -158,9 +158,11 @@ abstract contract JBSucker is JBPermissioned, IJBSucker {
         }
 
         // Transfer the tokens to this contract.
+        // slither-disable-next-line reentrancy-events,reentrancy-benign
         projectToken.safeTransferFrom(msg.sender, address(this), projectTokenAmount);
 
         // Redeem the tokens.
+        // slither-disable-next-line reentrancy-events,reentrancy-benign
         uint256 terminalTokenAmount = _getBackingAssets(projectToken, projectTokenAmount, token, minTokensReclaimed);
 
         // Insert the item into the outbox tree for the terminal `token`.
@@ -215,16 +217,6 @@ abstract contract JBSucker is JBPermissioned, IJBSucker {
             leaves: claimData.proof
         });
 
-        // If this contract's add to balance mode is `ON_CLAIM`, add the redeemed funds to the project's balance.
-        if (ADD_TO_BALANCE_MODE == JBAddToBalanceMode.ON_CLAIM) {
-            _addToBalance(claimData.token, claimData.leaf.terminalTokenAmount);
-        }
-
-        // Mint the project tokens for the beneficiary.
-        IJBController(address(DIRECTORY.controllerOf(PROJECT_ID))).mintTokensOf(
-            PROJECT_ID, claimData.leaf.projectTokenAmount, claimData.leaf.beneficiary, "", false
-        );
-
         emit Claimed(
             claimData.leaf.beneficiary,
             claimData.token,
@@ -232,6 +224,17 @@ abstract contract JBSucker is JBPermissioned, IJBSucker {
             claimData.leaf.terminalTokenAmount,
             claimData.leaf.index,
             ADD_TO_BALANCE_MODE == JBAddToBalanceMode.ON_CLAIM ? true : false
+        );
+
+        // If this contract's add to balance mode is `ON_CLAIM`, add the redeemed funds to the project's balance.
+        if (ADD_TO_BALANCE_MODE == JBAddToBalanceMode.ON_CLAIM) {
+            _addToBalance(claimData.token, claimData.leaf.terminalTokenAmount);
+        }
+
+        // Mint the project tokens for the beneficiary.
+        // slither-disable-next-line calls-loop,unused-return
+        IJBController(address(DIRECTORY.controllerOf(PROJECT_ID))).mintTokensOf(
+            PROJECT_ID, claimData.leaf.projectTokenAmount, claimData.leaf.beneficiary, "", false
         );
     }
 
@@ -272,6 +275,7 @@ abstract contract JBSucker is JBPermissioned, IJBSucker {
         }
 
         // The caller must be the project owner or have the `QUEUE_RULESETS` permission from them.
+        // slither-disable-next-line calls-loop
         _requirePermissionFrom(DIRECTORY.PROJECTS().ownerOf(PROJECT_ID), PROJECT_ID, JBPermissionIds.MAP_SUCKER_TOKEN);
 
         // If the remote token is being set to the 0 address (which disables bridging), send any remaining outbox funds to the remote chain.
@@ -408,21 +412,27 @@ abstract contract JBSucker is JBPermissioned, IJBSucker {
         }
 
         // Get the project's primary terminal for the token.
+        // slither
+        // slither-disable-next-line calls-loop
         IJBTerminal terminal = DIRECTORY.primaryTerminalOf(PROJECT_ID, token);
+        // slither-disable-next-line incorrect-equality
         if (address(terminal) == address(0)) revert NO_TERMINAL_FOR(PROJECT_ID, token);
 
         // Perform the `addToBalance`.
         if (token != JBConstants.NATIVE_TOKEN) {
+            // slither-disable-next-line calls-loop
             uint256 balanceBefore = IERC20(token).balanceOf(address(this));
             SafeERC20.forceApprove(IERC20(token), address(terminal), amount);
 
+            // slither-disable-next-line calls-loop
             terminal.addToBalanceOf(PROJECT_ID, token, amount, false, string(""), bytes(""));
 
             // Sanity check: make sure we transfer the full amount.
+            // slither-disable-next-line calls-loop,incorrect-equality
             assert(IERC20(token).balanceOf(address(this)) == balanceBefore - amount);
         } else {
             // If the token is the native token, use `msg.value`.
-            // slither-disable-next-line arbitrary-send-eth
+            // slither-disable-next-line arbitrary-send-eth,calls-loop
             terminal.addToBalanceOf{value: amount}(PROJECT_ID, token, amount, false, string(""), bytes(""));
         }
     }
@@ -453,6 +463,7 @@ abstract contract JBSucker is JBPermissioned, IJBSucker {
 
         // Sanity check to make sure we received the expected amount.
         // This prevents malicious terminals from reporting amounts other than what they send.
+        // slither-disable-next-line incorrect-equality
         assert(receivedAmount == _balanceOf(token, address(this)) - balanceBefore);
     }
 

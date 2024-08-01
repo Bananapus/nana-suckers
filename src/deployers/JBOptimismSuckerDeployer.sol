@@ -18,6 +18,7 @@ import {IJBSuckerDeployer} from "./../interfaces/IJBSuckerDeployer.sol";
 contract JBOptimismSuckerDeployer is JBPermissioned, IJBSuckerDeployer {
     error ONLY_SUCKERS();
     error ALREADY_CONFIGURED();
+    error ZERO_ADDRESS();
 
     /// @notice The directory of terminals and controllers for projects.
     IJBDirectory immutable DIRECTORY;
@@ -40,10 +41,11 @@ contract JBOptimismSuckerDeployer is JBPermissioned, IJBSuckerDeployer {
     /// @notice A temporary storage slot used by suckers to maintain deterministic deploys.
     uint256 public TEMP_ID_STORE;
 
-    constructor(IJBDirectory directory, IJBTokens tokens, IJBPermissions permissions, address _configurator)
+    constructor(IJBDirectory directory, IJBTokens tokens, IJBPermissions permissions, address configurator)
         JBPermissioned(permissions)
     {
-        LAYER_SPECIFIC_CONFIGURATOR = _configurator;
+        if (configurator == address(0)) revert ZERO_ADDRESS();
+        LAYER_SPECIFIC_CONFIGURATOR = configurator;
         DIRECTORY = directory;
         TOKENS = tokens;
     }
