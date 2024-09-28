@@ -13,6 +13,7 @@ import {JBPermissionIds} from "@bananapus/permission-ids/src/JBPermissionIds.sol
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {BitMaps} from "@openzeppelin/contracts/utils/structs/BitMaps.sol";
+import {ERC165, IERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
 import {JBAddToBalanceMode} from "./enums/JBAddToBalanceMode.sol";
 import {IJBSucker} from "./interfaces/IJBSucker.sol";
@@ -31,7 +32,7 @@ import {MerkleLib} from "./utils/MerkleLib.sol";
 /// chain to the remote chain, and the inbox tree is used to receive from the remote chain to the local chain.
 /// @dev Throughout this contract, "terminal token" refers to any token accepted by a project's terminal.
 /// @dev This contract does *NOT* support tokens that have a fee on regular transfers and rebasing tokens.
-abstract contract JBSucker is JBPermissioned, IJBSucker {
+abstract contract JBSucker is JBPermissioned, ERC165, IJBSucker {
     using BitMaps for BitMaps.BitMap;
     using MerkleLib for MerkleLib.Tree;
     using SafeERC20 for IERC20;
@@ -50,6 +51,10 @@ abstract contract JBSucker is JBPermissioned, IJBSucker {
     error JBSucker_NotPeer(address caller);
     error JBSucker_QueueInsufficientSize(uint256 amount, uint256 minimumAmount);
     error JBSucker_TokenNotMapped(address token);
+    error JBSucker_TokenAlreadyMapped(address localToken, address mappedTo);
+    error JBSucker_UnexpectedMsgValue(uint256 value);
+    error JBSucker_ExpectedMsgValue();
+    error JBSucker_InsufficientMsgValue(uint256 received, uint256 expected);
     error JBSucker_ZeroBeneficiary();
     error JBSucker_ZeroERC20Token();
 
@@ -190,6 +195,10 @@ abstract contract JBSucker is JBPermissioned, IJBSucker {
         return _remoteTokenFor[token];
     }
 
+    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC165, IERC165) returns (bool) {
+        return interfaceId == type(IJBSucker).interfaceId || super.supportsInterface(interfaceId);
+    }
+
     //*********************************************************************//
     // ------------------------ internal views --------------------------- //
     //*********************************************************************//
@@ -220,6 +229,23 @@ abstract contract JBSucker is JBPermissioned, IJBSucker {
         returns (bytes32)
     {
         return keccak256(abi.encode(projectTokenCount, terminalTokenAmount, beneficiary));
+    }
+
+    /// @notice Allow sucker implementations to add/override mapping rules to suite their specific needs.
+    function _validateTokenMapping(JBTokenMapping calldata map) internal pure virtual {
+        bool isNative = map.localToken == JBConstants.NATIVE_TOKEN;
+
+        // If the token being mapped is the native token, the `remoteToken` must also be the native token.
+        // The native token can also be mapped to the 0 address, which is used to disable native token bridging.
+        if (isNative && map.remoteToken != JBConstants.NATIVE_TOKEN && map.remoteToken != address(0)) {
+            revert JBSucker_InvalidNativeRemoteAddress(map.remoteToken);
+        }
+
+        // Enforce a reasonable minimum gas limit for bridging. A minimum which is too low could lead to the loss of
+        // funds.
+        if (map.minGas < MESSENGER_ERC20_MIN_GAS_LIMIT && !isNative) {
+            revert JBSucker_BelowMinGas(map.minGas, MESSENGER_ERC20_MIN_GAS_LIMIT);
+        }
     }
 
     //*********************************************************************//
@@ -326,19 +352,10 @@ abstract contract JBSucker is JBPermissioned, IJBSucker {
     /// them.
     function mapToken(JBTokenMapping calldata map) public {
         address token = map.localToken;
-        bool isNative = map.localToken == JBConstants.NATIVE_TOKEN;
+        JBRemoteToken memory currentMapping = _remoteTokenFor[token];
 
-        // If the token being mapped is the native token, the `remoteToken` must also be the native token.
-        // The native token can also be mapped to the 0 address, which is used to disable native token bridging.
-        if (isNative && map.remoteToken != JBConstants.NATIVE_TOKEN && map.remoteToken != address(0)) {
-            revert JBSucker_InvalidNativeRemoteAddress(map.remoteToken);
-        }
-
-        // Enforce a reasonable minimum gas limit for bridging. A minimum which is too low could lead to the loss of
-        // funds.
-        if (map.minGas < MESSENGER_ERC20_MIN_GAS_LIMIT && !isNative) {
-            revert JBSucker_BelowMinGas(map.minGas, MESSENGER_ERC20_MIN_GAS_LIMIT);
-        }
+        // Validate the token mapping according to the rules of the sucker.
+        _validateTokenMapping(map);
 
         // The caller must be the project owner or have the `QUEUE_RULESETS` permission from them.
         // slither-disable-next-line calls-loop
@@ -348,15 +365,32 @@ abstract contract JBSucker is JBPermissioned, IJBSucker {
             permissionId: JBPermissionIds.MAP_SUCKER_TOKEN
         });
 
+        // Make sure that the token does not get remapped to another remote token.
+        // As this would cause the funds for this token to be double spendable on the other side.
+        // It should not be possible to cause any issues even without this check
+        // a bridge *should* never accept such a request. This is mostly a sanity check.
+        if (
+            currentMapping.addr != address(0) && currentMapping.addr != map.remoteToken && map.remoteToken != address(0)
+                && _outboxOf[token].tree.count != 0
+        ) {
+            revert JBSucker_TokenAlreadyMapped(token, currentMapping.addr);
+        }
+
         // If the remote token is being set to the 0 address (which disables bridging), send any remaining outbox funds
         // to the remote chain.
         if (map.remoteToken == address(0) && _outboxOf[token].balance != 0) {
-            _sendRoot({transportPayment: 0, token: token, remoteToken: _remoteTokenFor[token]});
+            _sendRoot({transportPayment: 0, token: token, remoteToken: currentMapping});
         }
 
         // Update the token mapping.
-        _remoteTokenFor[token] =
-            JBRemoteToken({minGas: map.minGas, addr: map.remoteToken, minBridgeAmount: map.minBridgeAmount});
+        _remoteTokenFor[token] = JBRemoteToken({
+            enabled: map.remoteToken != address(0),
+            minGas: map.minGas,
+            // This is done so that a token can be disabled and then enabled again
+            // while ensuring the remoteToken never changes (unless it hasn't been used yet)
+            addr: map.remoteToken == address(0) ? currentMapping.addr : map.remoteToken,
+            minBridgeAmount: map.minBridgeAmount
+        });
     }
 
     /// @notice Map multiple ERC-20 tokens on the local chain to ERC-20 tokens on the remote chain, allowing those
@@ -401,9 +435,15 @@ abstract contract JBSucker is JBPermissioned, IJBSucker {
         }
 
         // Make sure that the token is mapped to a remote token.
-        if (_remoteTokenFor[token].addr == address(0)) {
+        if (!_remoteTokenFor[token].enabled) {
             revert JBSucker_TokenNotMapped(token);
         }
+
+        // TODO: Handle the edge-edge-case where the PEER has briged us assets before we were deployed,
+        // We need to check that we have never received a nonce and that we have never send a nonce, but we do have
+        // a balance of the token. To handle this edge-case we should either have both peers message each other to
+        // verify they can talk or we add the balance we had to the `amountToAddToBalanceOf` and wait for us to recieve
+        // the next root with the next nonce, as that contains all the depositors from the prev batch as well.
 
         // Transfer the tokens to this contract.
         // slither-disable-next-line reentrancy-events,reentrancy-benign

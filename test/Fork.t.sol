@@ -1,433 +1,477 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.13;
-
-// import "forge-std/Test.sol";
-// import "@openzeppelin/contracts/utils/Strings.sol";
-// import "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
-
-// import {MockPriceFeed} from "@bananapus/core/test/mock/MockPriceFeed.sol";
-
-// import {JBOptimismSucker, IJBDirectory, IJBTokens, IJBToken, IERC20, JBTokenMapping, OPMessenger} from
-// "../src/JBOptimismSucker.sol";
-// import "@bananapus/core/src/interfaces/IJBController.sol";
-// import "@bananapus/core/src/interfaces/terminal/IJBRedeemTerminal.sol";
-// import "@bananapus/core/src/interfaces/terminal/IJBMultiTerminal.sol";
-// import "@bananapus/core/src/interfaces/IJBPriceFeed.sol";
-// import "@bananapus/core/src/libraries/JBConstants.sol";
-// import "@bananapus/core/src/libraries/JBPermissionIds.sol";
-// import {JBRulesetConfig} from "@bananapus/core/src/structs/JBRulesetConfig.sol";
-// import {JBFundAccessLimitGroup} from "@bananapus/core/src/structs/JBFundAccessLimitGroup.sol";
-// import {IJBRulesetApprovalHook} from "@bananapus/core/src/interfaces/IJBRulesetApprovalHook.sol";
-// import {IJBPermissions, JBPermissionsData} from "@bananapus/core/src/interfaces/IJBPermissions.sol";
-
-// import {MockMessenger} from "./mocks/MockMessenger.sol";
-
-// contract JBOptimismSuckerTest is Test {
-//     JBOptimismSuckerHarnass public suckerL1;
-//     JBOptimismSuckerHarnass public suckerL2;
-
-//     IJBController CONTROLLER;
-//     IJBDirectory DIRECTORY;
-//     IJBTokens TOKENS;
-//     IJBPermissions PERMISSIONS;
-//     IJBRedeemTerminal MULTI_TERMINAL;
-
-//     struct TestBridgeItems {
-//         address sender;
-//         address beneficiary;
-//         uint256 projectTokenAmount;
-//     }
-
-//     string DEPLOYMENT_JSON = "@bananapus/core/broadcast/Deploy.s.sol/11155111/run-latest.json";
-
-//     MockMessenger _mockMessenger;
-
-//     function setUp() public {
-//         vm.createSelectFork("https://ethereum-sepolia.publicnode.com"); // Will start on latest block by default
-
-//         CONTROLLER = IJBController(_getDeploymentAddress(DEPLOYMENT_JSON, "JBController"));
-//         DIRECTORY = IJBDirectory(_getDeploymentAddress(DEPLOYMENT_JSON, "JBDirectory"));
-//         TOKENS = IJBTokens(_getDeploymentAddress(DEPLOYMENT_JSON, "JBTokens"));
-//         PERMISSIONS = IJBPermissions(_getDeploymentAddress(DEPLOYMENT_JSON, "JBPermissions"));
-//         MULTI_TERMINAL = IJBRedeemTerminal(_getDeploymentAddress(DEPLOYMENT_JSON, "JBMultiTerminal"));
-
-//         // Configure a mock manager that mocks the OP bridge
-//         _mockMessenger = new MockMessenger();
-//     }
-
-//     function test_linkProjects() public {
-//         address _L1ProjectOwner = makeAddr("L1ProjectOwner");
-//         address _L2ProjectOwner = makeAddr("L2ProjectOwner");
-
-//         _configureAndLinkProjects(_L1ProjectOwner, _L2ProjectOwner);
-
-//         assertEq(address(suckerL1.PEER()), address(suckerL2));
-//         assertEq(address(suckerL2.PEER()), address(suckerL1));
-//     }
-
-//     function test_suck_native(uint256 _payAmount) public {
-//         _payAmount = _bound(_payAmount, 0.1 ether, 100_000 ether);
-
-//         // Configure the projects and suckers
-//         (uint256 _L1Project, uint256 _L2Project) = _configureAndLinkProjects(makeAddr("L1ProjectOwner"),
-// makeAddr("L2ProjectOwner"));
-
-//         // Fund the user
-//         address _user = makeAddr("user");
-//         vm.deal(_user, _payAmount);
-
-//         // User pays project and receives tokens in exchange on L2
-//         vm.startPrank(_user);
-//         uint256 _receivedTokens = MULTI_TERMINAL.pay{value: _payAmount}(
-//             _L2Project, JBConstants.NATIVE_TOKEN, _payAmount, address(_user), 0, "", bytes("")
-//         );
-
-//         // The items to bridge.
-//         TestBridgeItems[] memory _items = new TestBridgeItems[](1);
-//         _items[0] = TestBridgeItems({
-//             sender: _user,
-//             beneficiary: _user,
-//             projectTokenAmount: _receivedTokens
-//         });
-
-//         // Expect the L1 terminal to receive the funds
-//         vm.expectCall(
-//             address(MULTI_TERMINAL),
-//             abi.encodeCall(
-//                 IJBTerminal.addToBalanceOf,
-//                 (_L1Project, JBConstants.NATIVE_TOKEN, _payAmount, false, string(""), bytes(""))
-//             )
-//         );
-
-//         // Handle all the bridging.
-//         _bridge(_items, JBConstants.NATIVE_TOKEN, _L2Project, suckerL2);
-
-//         IERC20 _l1Token = IERC20(address(TOKENS.tokenOf(_L1Project)));
-//         IERC20 _l2Token = IERC20(address(TOKENS.tokenOf(_L2Project)));
-
-//         for(uint256 _i; _i < _items.length; _i++){
-//             // Beneficiary should now have the tokens on L1
-//             assertEq(_l1Token.balanceOf(_items[_i].beneficiary), _receivedTokens);
-//             // Sender should no longer have any tokens on L2
-//             assertEq(_l2Token.balanceOf(_items[_i].sender), 0);
-//         }
-//     }
-
-//     function test_suck_token(uint256 _payAmount) public {
-//         _payAmount = _bound(_payAmount, 0.1 ether, 100_000 ether);
-
-//         // Configure the projects and suckers
-//         address _projectOwnerL1 = makeAddr("L1ProjectOwner");
-//         address _projectOwnerL2 = makeAddr("L2ProjectOwner");
-//         (uint256 _L1Project, uint256 _L2Project) = _configureAndLinkProjects(_projectOwnerL1, _projectOwnerL2);
-
-//         // Some random DAI token I found on the blockexplorer
-//         ERC20Mock _L2ERC20Token = new ERC20Mock();
-
-//         // Configure the L2 terminal for the token.
-//         {
-//             address[] memory _tokens = new address[](1);
-//             _tokens[0] = address(_L2ERC20Token);
-
-//             vm.startPrank(_projectOwnerL2);
-//             MULTI_TERMINAL.addAccountingContextsFor(_L2Project, _tokens);
-
-//             // Add the price feed for it.
-//             IJBMultiTerminal(address(MULTI_TERMINAL)).STORE().PRICES().addPriceFeedFor(
-//                 _L2Project,
-//                 uint32(uint160(JBConstants.NATIVE_TOKEN)),
-//                 uint32(uint160(address(_L2ERC20Token))),
-//                 IJBPriceFeed(address(new MockPriceFeed(1 ether, 18)))
-//             );
-
-//             vm.stopPrank();
-//         }
-
-//         ERC20Mock _L1ERC20Token = new ERC20Mock();
-//         {
-//             address[] memory _tokens = new address[](1);
-//             _tokens[0] = address(_L1ERC20Token);
-
-//             // Configure the L1 to accept the token.
-//             vm.startPrank(_projectOwnerL1);
-//             MULTI_TERMINAL.addAccountingContextsFor(_L1Project, _tokens);
-
-//             // Add the price feed for it.
-//             IJBMultiTerminal(address(MULTI_TERMINAL)).STORE().PRICES().addPriceFeedFor(
-//                 _L1Project,
-//                 uint32(uint160(JBConstants.NATIVE_TOKEN)),
-//                 uint32(uint160(address(_L1ERC20Token))),
-//                 IJBPriceFeed(address(new MockPriceFeed(1 ether, 18)))
-//             );
-
-//             vm.stopPrank();
-//         }
-
-//         // Configure the mock bridge for the token.
-//         _mockMessenger.setRemoteToken(address(_L2ERC20Token), address(_L1ERC20Token));
-
-//         // // Configure the L2 sucker for the token.
-//         // vm.prank(_projectOwnerL2);
-//         // suckerL2.mapToken(address(_L2ERC20Token), JBTokenMapping({
-//         //     minGas: 200_000,
-//         //     remoteToken: address(_L1ERC20Token)
-//         // }));
-
-//         // Fund the user
-//         address _user = makeAddr("user");
-//         _L2ERC20Token.mint(_user, _payAmount);
-
-//         TestBridgeItems[] memory _items = new TestBridgeItems[](1);
-
-//         // User pays project and receives tokens in exchange on L2
-//         vm.startPrank(_user);
-//         _L2ERC20Token.approve(address(MULTI_TERMINAL), _payAmount);
-//         uint256 _receivedTokens = MULTI_TERMINAL.pay(
-//             _L2Project, address(_L2ERC20Token), _payAmount, address(_user), 0, "", bytes("")
-//         );
-//         vm.stopPrank();
-
-//         // The items to bridge.
-//         _items[0] = TestBridgeItems({
-//             sender: _user,
-//             beneficiary: _user,
-//             projectTokenAmount: _receivedTokens
-//         });
-
-//          // Expect the L1 terminal to receive the funds.
-//         vm.expectCall(
-//             address(MULTI_TERMINAL),
-//             abi.encodeCall(
-//                 IJBTerminal.addToBalanceOf,
-//                 (_L1Project, address(_L1ERC20Token), _payAmount, false, string(""), bytes(""))
-//             )
-//         );
-
-//         // Handle all the bridging.
-//         _bridge(_items, address(_L2ERC20Token), _L2Project, suckerL2);
-
-//         IERC20 _l1Token = IERC20(address(TOKENS.tokenOf(_L1Project)));
-//         IERC20 _l2Token = IERC20(address(TOKENS.tokenOf(_L2Project)));
-//         for(uint256 _i; _i < _items.length; _i++){
-//             // Beneficiary should now have the tokens on L1
-//             assertEq(_l1Token.balanceOf(_items[_i].beneficiary), _receivedTokens);
-//             // Sender should no longer have any tokens on L2
-//             assertEq(_l2Token.balanceOf(_items[_i].sender), 0);
-//         }
-//     }
-
-//     function _bridge(
-//         TestBridgeItems[] memory _items,
-//         address _terminalToken,
-//         uint256 _project,
-//         JBOptimismSuckerHarnass _sucker
-//     ) internal {
-//          IERC20 _projectToken = IERC20(address(TOKENS.tokenOf(_project)));
-
-//          // Tracks the beneficiaries.
-//          address[] memory _beneficiaries = new address[](_items.length);
-//          uint256 _totalProjectTokenAmount;
-
-//          // Give approval to spend tokens and add to the bridge queue.
-//          for(uint256 _i; _i < _items.length; ++_i){
-//             vm.startPrank(_items[_i].sender);
-//             _projectToken.approve(address(_sucker), _items[_i].projectTokenAmount);
-
-//             // Add our item to the queue.
-//             _sucker.bridge(
-//                 _items[_i].projectTokenAmount,
-//                 _items[_i].beneficiary,
-//                 0,
-//                 _terminalToken
-//             );
-
-//             // Add to the list of beneficiaries for the next step.
-//             _beneficiaries[_i] = _items[_i].beneficiary;
-//             _totalProjectTokenAmount += _items[_i].projectTokenAmount;
-//             vm.stopPrank();
-//          }
-
-//         //  // Execute our queue item.
-//         // _sucker.toRemote(
-//         //     _terminalToken,
-//         //     _beneficiaries
-//         // );
-
-//         // Get the remote sucker.
-//         // JBOptimismSuckerHarnass _remoteSucker = JBOptimismSuckerHarnass(payable(address(_sucker.PEER())));
-
-//         // address _remoteTerminalToken;
-//         // if(_terminalToken != JBConstants.NATIVE_TOKEN) {
-//         //     (,_remoteTerminalToken) = _sucker.token(_terminalToken);
-//         // } else {
-//         //     _remoteTerminalToken = JBConstants.NATIVE_TOKEN;
-//         // }
-
-//         // // On the remote chain we execute the message.
-//         // _remoteSucker.executeMessage(
-//         //     _sucker.ForTest_GetNonce() - 1,
-//         //     _remoteTerminalToken,
-//         //     _totalProjectTokenAmount,
-//         //     _sucker.ForTest_GetBridgeItems()
-//         // );
-
-//     }
-
-//     function _configureAndLinkProjects(address _L1ProjectOwner, address _L2ProjectOwner)
-//         internal
-//         returns (uint256 _L1Project, uint256 _L2Project)
-//     {
-//         // Deploy two projects
-//         _L1Project = _deployJBProject(_L1ProjectOwner, "Bananapus", "NANA");
-//         _L2Project = _deployJBProject(_L2ProjectOwner, "BananapusOptimism", "OPNANA");
-
-//         // Get the determenistic addresses for the suckers
-//         uint256 _nonce = vm.getNonce(address(this));
-//         address _suckerL1 = vm.computeCreateAddress(address(this), _nonce);
-//         address _suckerL2 = vm.computeCreateAddress(address(this), _nonce + 1);
-
-//         // Deploy the pair of suckers
-//         suckerL1 = new JBOptimismSuckerHarnass(_mockMessenger, DIRECTORY, TOKENS, PERMISSIONS, _suckerL2,
-// _L1Project);
-//         suckerL2 = new JBOptimismSuckerHarnass(_mockMessenger, DIRECTORY, TOKENS, PERMISSIONS, _suckerL1,
-// _L2Project);
-
-//         uint256[] memory _permissions = new uint256[](1);
-//         _permissions[0] = JBPermissionIds.MINT_TOKENS;
-
-//         // Grant 'MINT_TOKENS' permission to the JBSuckers of their localChains
-//         vm.prank(_L1ProjectOwner);
-//         PERMISSIONS.setPermissionsFor(
-//             address(_L1ProjectOwner),
-//             JBPermissionsData({operator: address(suckerL1), projectId: _L1Project, permissionIds: _permissions})
-//         );
-
-//         vm.prank(_L2ProjectOwner);
-//         PERMISSIONS.setPermissionsFor(
-//             address(_L2ProjectOwner),
-//             JBPermissionsData({operator: address(suckerL2), projectId: _L2Project, permissionIds: _permissions})
-//         );
-//     }
-
-//     function _deployJBProject(address _owner, string memory _tokenName, string memory _tokenSymbol)
-//         internal
-//         returns (uint256 _projectId)
-//     {
-//         // IJBTerminal[] memory _terminals = new IJBTerminal[](1);
-//         // _terminals[0] = IJBTerminal(address(MULTI_TERMINAL));
-
-//         JBRulesetMetadata memory _metadata = JBRulesetMetadata({
-//             reservedRate: 0,
-//             redemptionRate: JBConstants.MAX_REDEMPTION_RATE,
-//             baseCurrency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
-//             pausePay: false,
-//             pauseCreditTransfers: false,
-//             allowOwnerMinting: true,
-//             allowTerminalMigration: false,
-//             allowSetTerminals: false,
-//             allowControllerMigration: false,
-//             allowSetController: false,
-//             holdFees: false,
-//             useTotalSurplusForRedemptions: false,
-//             useDataHookForPay: false,
-//             useDataHookForRedeem: false,
-//             dataHook: address(0),
-//             metadata: 0
-//         });
-
-//         // Package up ruleset configuration.
-//         JBRulesetConfig[] memory _rulesetConfig = new JBRulesetConfig[](1);
-//         _rulesetConfig[0].mustStartAtOrAfter = 0;
-//         _rulesetConfig[0].duration = 0;
-//         _rulesetConfig[0].weight = 10 ** 18;
-//         _rulesetConfig[0].metadata = _metadata;
-//         _rulesetConfig[0].splitGroups = new JBSplitGroup[](0);
-//         _rulesetConfig[0].fundAccessLimitGroups = new JBFundAccessLimitGroup[](0);
-
-//         // Package up terminal configuration.
-//         JBTerminalConfig[] memory _terminalConfigurations = new JBTerminalConfig[](1);
-//         address[] memory _tokens = new address[](1);
-//         _tokens[0] = JBConstants.NATIVE_TOKEN;
-//         _terminalConfigurations[0] = JBTerminalConfig({terminal: MULTI_TERMINAL, tokensToAccept: _tokens});
-
-//         _projectId = CONTROLLER.launchProjectFor({
-//             owner: _owner,
-//             projectMetadata: "myIPFSHash",
-//             rulesetConfigurations: _rulesetConfig,
-//             terminalConfigurations: _terminalConfigurations,
-//             memo: ""
-//         });
-
-//         vm.prank(_owner);
-//         CONTROLLER.deployERC20For(_projectId, _tokenName, _tokenSymbol);
-//     }
-
-//     /**
-//      * @notice Get the address of a contract that was deployed by the Deploy script.
-//      *     @dev Reverts if the contract was not found.
-//      *     @param _path The path to the deployment file.
-//      *     @param _contractName The name of the contract to get the address of.
-//      *     @return The address of the contract.
-//      */
-//     function _getDeploymentAddress(string memory _path, string memory _contractName) internal view returns (address)
-// {
-//         string memory _deploymentJson = vm.readFile(_path);
-//         uint256 _nOfTransactions = stdJson.readStringArray(_deploymentJson, ".transactions").length;
-
-//         for (uint256 i = 0; i < _nOfTransactions; i++) {
-//             string memory _currentKey = string.concat(".transactions", "[", Strings.toString(i), "]");
-//             string memory _currentContractName =
-//                 stdJson.readString(_deploymentJson, string.concat(_currentKey, ".contractName"));
-
-//             if (keccak256(abi.encodePacked(_currentContractName)) == keccak256(abi.encodePacked(_contractName))) {
-//                 return stdJson.readAddress(_deploymentJson, string.concat(_currentKey, ".contractAddress"));
-//             }
-//         }
-
-//         revert(
-//             string.concat("Could not find contract with name '", _contractName, "' in deployment file '", _path, "'")
-//         );
-//     }
-// }
-
-// contract JBOptimismSuckerHarnass is JBOptimismSucker {
-
-//     // BPSuckBridgeItem[] internal _latestBridgeItems;
-
-//     constructor(
-//         OPMessenger _messenger,
-//         IJBDirectory _directory,
-//         IJBTokens _tokens,
-//         IJBPermissions _permissions,
-//         address _peer,
-//         uint256 _projectId
-//     ) JBOptimismSucker(
-//         _messenger,
-//         address(0)
-//         _directory,
-//         _tokens,
-//         _permissions,
-//         _peer,
-//         _projectId
-//     ) {}
-
-//     // function ForTest_GetNonce() external view returns(uint256) {
-//     //     return nonce;
-//     // }
-
-//     // function ForTest_GetBridgeItems() external returns (BPSuckBridgeItem[] memory) {
-//     //     return _latestBridgeItems;
-//     // }
-
-//     // //  function _sendItemsOverBridge(
-//     //     address _token,
-//     //     uint256 _tokenAmount,
-//     //     BPSuckBridgeItem[] memory _itemsToBridge
-//     // ) internal virtual override returns (bytes32 _messageHash) {
-//     //     delete _latestBridgeItems;
-//     //     for(uint256 _i; _i < _itemsToBridge.length; _i++){
-//     //         _latestBridgeItems.push(_itemsToBridge[_i]);
-//     //     }
-//     //     // super._sendItemsOverBridge(_token, _tokenAmount, _itemsToBridge);
-//     // }
-// }
+pragma solidity 0.8.23;
+
+import /* {*} from */ "@bananapus/core/test/helpers/TestBaseWorkflow.sol";
+import {MockPriceFeed} from "@bananapus/core/test/mock/MockPriceFeed.sol";
+import {IJBSucker} from "../src/interfaces/IJBSucker.sol";
+import {IJBSuckerDeployer} from "../src/interfaces/IJBSuckerDeployer.sol";
+import {IJBDirectory} from "@bananapus/core/src/interfaces/IJBDirectory.sol";
+import {IJBController} from "@bananapus/core/src/interfaces/IJBController.sol";
+import {IJBTokens} from "@bananapus/core/src/interfaces/IJBTokens.sol";
+import {IJBTerminal} from "@bananapus/core/src/interfaces/IJBTerminal.sol";
+import {IJBRedeemTerminal} from "@bananapus/core/src/interfaces/IJBRedeemTerminal.sol";
+import {JBConstants} from "@bananapus/core/src/libraries/JBConstants.sol";
+import {JBPermissioned} from "@bananapus/core/src/abstract/JBPermissioned.sol";
+import {JBPermissionsData} from "@bananapus/core/src/structs/JBPermissionsData.sol";
+import {IJBPermissions} from "@bananapus/core/src/interfaces/IJBPermissions.sol";
+import {JBPermissionIds} from "@bananapus/permission-ids/src/JBPermissionIds.sol";
+import {SafeERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+
+import {JBTokenMapping} from "../src/structs/JBTokenMapping.sol";
+import {JBRemoteToken} from "../src/structs/JBRemoteToken.sol";
+import {JBOutboxTree} from "../src/structs/JBOutboxTree.sol";
+import {JBInboxTreeRoot} from "../src/structs/JBInboxTreeRoot.sol";
+import {JBMessageRoot} from "../src/structs/JBMessageRoot.sol";
+import {JBClaim} from "../src/structs/JBClaim.sol";
+import {JBAddToBalanceMode} from "../src/enums/JBAddToBalanceMode.sol";
+import {MerkleLib} from "../src/utils/MerkleLib.sol";
+
+import "forge-std/Test.sol";
+import {JBCCIPSuckerDeployer} from "src/deployers/JBCCIPSuckerDeployer.sol";
+import {JBCCIPSucker} from "../src/JBCCIPSucker.sol";
+import {BurnMintERC677Helper} from "@chainlink/local/src/ccip/CCIPLocalSimulator.sol";
+import {CCIPLocalSimulatorFork, Register} from "@chainlink/local/src/ccip/CCIPLocalSimulatorFork.sol";
+
+import {JBClaim} from "../src/structs/JBClaim.sol";
+import {JBLeaf} from "../src/structs/JBClaim.sol";
+import {MerkleLib} from "../src/utils/MerkleLib.sol";
+
+contract CCIPSuckerForkedTests is TestBaseWorkflow, JBTest {
+    // CCIP Local Simulator Contracts
+    CCIPLocalSimulatorFork ccipLocalSimulatorFork;
+    BurnMintERC677Helper ccipBnM;
+    BurnMintERC677Helper ccipBnMArbSepolia;
+
+    // Re-used parameters for project/ruleset/sucker setups
+    JBRulesetMetadata _metadata;
+    JBAddToBalanceMode atbMode = JBAddToBalanceMode.ON_CLAIM;
+
+    // Sucker and token
+    JBCCIPSuckerDeployer suckerDeployer;
+    JBCCIPSuckerDeployer suckerDeployer2;
+    IJBSucker suckerGlobal;
+    IJBToken projectOneToken;
+
+    // Chain ids and selectors
+    uint256 sepoliaFork;
+    uint256 arbSepoliaFork;
+    uint64 arbSepoliaChainSelector = 3_478_487_238_524_512_106;
+    uint64 ethSepoliaChainSelector = 16_015_286_601_757_825_753;
+
+    // RPCs
+    string ETHEREUM_SEPOLIA_RPC_URL = vm.envOr("RPC_ETHEREUM_SEPOLIA", string("https://1rpc.io/sepolia"));
+    string ARBITRUM_SEPOLIA_RPC_URL =
+        vm.envOr("RPC_ARBITRUM_SEPOLIA", string("https://arbitrum-sepolia.blockpi.network/v1/rpc/public"));
+
+    //*********************************************************************//
+    // ---------------------------- Setup parts -------------------------- //
+    //*********************************************************************//
+
+    function initL1AndUtils() public {
+        // Setup starts on sepolia fork
+        sepoliaFork = vm.createSelectFork(ETHEREUM_SEPOLIA_RPC_URL);
+
+        ccipLocalSimulatorFork = new CCIPLocalSimulatorFork();
+        vm.makePersistent(address(ccipLocalSimulatorFork));
+        Register.NetworkDetails memory sepoliaNetworkDetails = ccipLocalSimulatorFork.getNetworkDetails(block.chainid);
+
+        ccipBnM = BurnMintERC677Helper(sepoliaNetworkDetails.ccipBnMAddress);
+        vm.label(address(ccipBnM), "bnmEthSep");
+        vm.makePersistent(address(ccipBnM));
+    }
+
+    function initMetadata() public {
+        _metadata = JBRulesetMetadata({
+            reservedPercent: JBConstants.MAX_RESERVED_PERCENT / 2, //50%
+            redemptionRate: JBConstants.MAX_REDEMPTION_RATE, //50%
+            baseCurrency: uint32(uint160(address(JBConstants.NATIVE_TOKEN))),
+            pausePay: false,
+            pauseCreditTransfers: false,
+            allowOwnerMinting: true,
+            allowSetCustomToken: false,
+            allowTerminalMigration: false,
+            allowSetTerminals: false,
+            allowSetController: false,
+            allowAddAccountingContext: true,
+            allowAddPriceFeed: true,
+            allowCrosschainSuckerExtension: true,
+            ownerMustSendPayouts: false,
+            holdFees: false,
+            useTotalSurplusForRedemptions: true,
+            useDataHookForPay: false,
+            useDataHookForRedeem: false,
+            dataHook: address(0),
+            metadata: 0
+        });
+    }
+
+    function launchAndConfigureL1Project() public {
+        // Setup: terminal / project
+        // Package up the limits for the given terminal.
+        JBFundAccessLimitGroup[] memory _fundAccessLimitGroup = new JBFundAccessLimitGroup[](1);
+        {
+            // Specify a payout limit.
+            JBCurrencyAmount[] memory _payoutLimits = new JBCurrencyAmount[](0);
+            // _payoutLimits[0] =
+            //     JBCurrencyAmount({amount: 10 * 10 ** 18, currency: uint32(uint160(JBConstants.NATIVE_TOKEN))});
+
+            // Specify a surplus allowance.
+            JBCurrencyAmount[] memory _surplusAllowances = new JBCurrencyAmount[](1);
+            _surplusAllowances[0] =
+                JBCurrencyAmount({amount: 5 * 10 ** 18, currency: uint32(uint160(JBConstants.NATIVE_TOKEN))});
+
+            _fundAccessLimitGroup[0] = JBFundAccessLimitGroup({
+                terminal: address(jbMultiTerminal()),
+                token: JBConstants.NATIVE_TOKEN,
+                payoutLimits: _payoutLimits,
+                surplusAllowances: _surplusAllowances
+            });
+        }
+
+        {
+            // Package up the ruleset configuration.
+            JBRulesetConfig[] memory _rulesetConfigurations = new JBRulesetConfig[](1);
+            _rulesetConfigurations[0].mustStartAtOrAfter = 0;
+            _rulesetConfigurations[0].duration = 0;
+            _rulesetConfigurations[0].weight = 1000 * 10 ** 18;
+            _rulesetConfigurations[0].decayPercent = 0;
+            _rulesetConfigurations[0].approvalHook = IJBRulesetApprovalHook(address(0));
+            _rulesetConfigurations[0].metadata = _metadata;
+            _rulesetConfigurations[0].splitGroups = new JBSplitGroup[](0);
+            _rulesetConfigurations[0].fundAccessLimitGroups = _fundAccessLimitGroup;
+
+            JBTerminalConfig[] memory _terminalConfigurations = new JBTerminalConfig[](1);
+            JBAccountingContext[] memory _tokensToAccept = new JBAccountingContext[](2);
+
+            _tokensToAccept[0] = JBAccountingContext({
+                token: JBConstants.NATIVE_TOKEN,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            });
+
+            _tokensToAccept[1] = JBAccountingContext({
+                token: address(ccipBnM),
+                decimals: 18,
+                currency: uint32(uint160(address(ccipBnM)))
+            });
+
+            _terminalConfigurations[0] =
+                JBTerminalConfig({terminal: jbMultiTerminal(), accountingContextsToAccept: _tokensToAccept});
+
+            mockExpect(
+                address(ccipBnM),
+                abi.encodeCall(IERC165.supportsInterface, (type(IERC20Metadata).interfaceId)),
+                abi.encode(true)
+            );
+
+            // Create a first project to collect fees.
+            jbController().launchProjectFor({
+                owner: multisig(),
+                projectUri: "whatever",
+                rulesetConfigurations: _rulesetConfigurations,
+                terminalConfigurations: _terminalConfigurations, // Set terminals to receive fees.
+                memo: ""
+            });
+
+            // Setup an erc20 for the project
+            projectOneToken = jbController().deployERC20For(1, "SuckerToken", "SOOK", bytes32(0));
+
+            // Add a price-feed to reconcile pays and redeems with our test token
+            MockPriceFeed _priceFeedNativeTest = new MockPriceFeed(100 * 10 ** 18, 18); // 2000 test token == 1 native
+                // token
+            vm.label(address(_priceFeedNativeTest), "Mock Price Feed Native-ccipBnM");
+
+            vm.startPrank(address(jbController()));
+            IJBPrices(jbPrices()).addPriceFeedFor({
+                projectId: 1,
+                pricingCurrency: uint32(uint160(address(ccipBnM))),
+                unitCurrency: uint32(uint160(JBConstants.NATIVE_TOKEN)),
+                feed: IJBPriceFeed(_priceFeedNativeTest)
+            });
+        }
+    }
+
+    function initL2AndUtils() public {
+        // Create and select our L2 fork- preparing to deploy our project and sucker
+        arbSepoliaFork = vm.createSelectFork(ARBITRUM_SEPOLIA_RPC_URL);
+
+        // Get the corresponding remote token and label it for convenience in reading any trace in console
+        Register.NetworkDetails memory arbSepoliaNetworkDetails = ccipLocalSimulatorFork.getNetworkDetails(421_614);
+
+        // This is a faux token helper provided to emulate token bridges of the burn and mint type via CCIP
+        ccipBnMArbSepolia = BurnMintERC677Helper(arbSepoliaNetworkDetails.ccipBnMAddress);
+        vm.label(address(ccipBnMArbSepolia), "bnmArbSep");
+    }
+
+    function launchAndConfigureL2Project() public {
+        JBFundAccessLimitGroup[] memory _fundAccessLimitGroup = new JBFundAccessLimitGroup[](1);
+        {
+            // Package up the ruleset configuration.
+            JBRulesetConfig[] memory _rulesetConfigurations = new JBRulesetConfig[](1);
+            _rulesetConfigurations[0].mustStartAtOrAfter = 0;
+            _rulesetConfigurations[0].duration = 0;
+            _rulesetConfigurations[0].weight = 1000 * 10 ** 18;
+            _rulesetConfigurations[0].decayPercent = 0;
+            _rulesetConfigurations[0].approvalHook = IJBRulesetApprovalHook(address(0));
+            _rulesetConfigurations[0].metadata = _metadata;
+            _rulesetConfigurations[0].splitGroups = new JBSplitGroup[](0);
+            _rulesetConfigurations[0].fundAccessLimitGroups = _fundAccessLimitGroup;
+
+            JBTerminalConfig[] memory _terminalConfigurations = new JBTerminalConfig[](1);
+            JBAccountingContext[] memory _tokensToAccept = new JBAccountingContext[](2);
+
+            _tokensToAccept[0] = JBAccountingContext({
+                token: JBConstants.NATIVE_TOKEN,
+                decimals: 18,
+                currency: uint32(uint160(JBConstants.NATIVE_TOKEN))
+            });
+
+            _tokensToAccept[1] = JBAccountingContext({
+                token: address(ccipBnMArbSepolia),
+                decimals: 18,
+                currency: uint32(uint160(address(ccipBnMArbSepolia)))
+            });
+
+            _terminalConfigurations[0] =
+                JBTerminalConfig({terminal: jbMultiTerminal(), accountingContextsToAccept: _tokensToAccept});
+
+            mockExpect(
+                address(ccipBnMArbSepolia),
+                abi.encodeCall(IERC165.supportsInterface, (type(IERC20Metadata).interfaceId)),
+                abi.encode(true)
+            );
+
+            // Create a first project to collect fees.
+            jbController().launchProjectFor({
+                owner: multisig(),
+                projectUri: "whatever",
+                rulesetConfigurations: _rulesetConfigurations,
+                terminalConfigurations: _terminalConfigurations, // Set terminals to receive fees.
+                memo: ""
+            });
+        }
+    }
+
+    //*********************************************************************//
+    // ------------------------------- Setup ----------------------------- //
+    //*********************************************************************//
+
+    function setUp() public override {
+        // Create (and select) Sepolia fork and make simulator helper contracts persistent.
+        initL1AndUtils();
+
+        // Set metadata for the test projects to use.
+        initMetadata();
+
+        // run setup on our first fork (sepolia) so we have a JBV4 setup (deploys v4 contracts).
+        super.setUp();
+
+        vm.stopPrank();
+        suckerDeployer =
+            new JBCCIPSuckerDeployer{salt: "salty"}(jbDirectory(), jbTokens(), jbPermissions(), address(this));
+
+        // Set the remote chain as arb-sep, which also grabs the chain selector from CCIPHelper for deployer
+        suckerDeployer.configureLayerSpecific(421_614);
+
+        // deploy our first sucker (on sepolia, the current fork, or "L1").
+        suckerGlobal = suckerDeployer.createForSender(1, "salty");
+        vm.label(address(suckerGlobal), "suckerGlobal");
+
+        // In-memory vars needed for setup
+        // Allow the sucker to mint- This permission array is also used in second project config toward the end of this
+        // setup.
+        uint8[] memory ids = new uint8[](1);
+        ids[0] = JBPermissionIds.MINT_TOKENS;
+
+        // Permissions data for setPermissionsFor().
+        JBPermissionsData memory perms =
+            JBPermissionsData({operator: address(suckerGlobal), projectId: 1, permissionIds: ids});
+
+        // Chain selectors of remote chains allowed by the suckers (bi-directional in this example).
+        uint64[] memory allowedChains = new uint64[](2);
+        allowedChains[0] = arbSepoliaChainSelector;
+        allowedChains[1] = ethSepoliaChainSelector;
+
+        // Allow our L1 sucker to mint.
+        vm.startPrank(multisig());
+        jbPermissions().setPermissionsFor(multisig(), perms);
+
+        // Launch and configure our project on L1 (selected fork is still sepolia).
+        launchAndConfigureL1Project();
+
+        // Sucker (on L1) now allows our intended chains and L1 setup is complete.
+        vm.stopPrank();
+
+        // Init our L2 fork and CCIP Local simulator utils for L2.
+        initL2AndUtils();
+
+        // Setup JBV4 on our forked L2 (arb-sep).
+        super.setUp();
+
+        vm.stopPrank();
+        suckerDeployer2 =
+            new JBCCIPSuckerDeployer{salt: "salty"}(jbDirectory(), jbTokens(), jbPermissions(), address(this));
+        suckerDeployer2.configureLayerSpecific(11_155_111);
+
+        // Deploy the sucker on L2.
+        vm.prank(address(suckerDeployer2));
+        deployCodeTo(
+            "JBCCIPSucker.sol",
+            abi.encode(jbDirectory(), jbTokens(), jbPermissions(), address(0), atbMode),
+            address(suckerGlobal)
+        );
+
+        // Launch our project on L2.
+        vm.startPrank(multisig());
+        launchAndConfigureL2Project();
+
+        // Allow the L2 sucker to mint.
+        jbPermissions().setPermissionsFor(multisig(), perms);
+
+        // Enable intended chains for the L2 Sucker
+        vm.stopPrank();
+    }
+
+    //*********************************************************************//
+    // ------------------------------- Tests ----------------------------- //
+    //*********************************************************************//
+
+    function test_forkNativeTransfer() external {
+        // Declare test actors and parameters
+        address rootSender = makeAddr("rootSender");
+        address user = makeAddr("him");
+        uint256 amountToSend = 100;
+        uint256 maxRedeemed = amountToSend / 2;
+
+        // Select our L1 fork to begin this test.
+        vm.selectFork(sepoliaFork);
+
+        // Give ourselves test tokens
+        vm.deal(user, amountToSend);
+
+        // Map the token
+        JBTokenMapping memory map = JBTokenMapping({
+            localToken: JBConstants.NATIVE_TOKEN,
+            minGas: 200_000,
+            remoteToken: JBConstants.NATIVE_TOKEN,
+            minBridgeAmount: 1
+        });
+
+        vm.prank(multisig());
+        suckerGlobal.mapToken(map);
+
+        // Let the terminal spend our test tokens so we can pay and receive project tokens
+        vm.startPrank(user);
+        // ccipBnM.approve(address(jbMultiTerminal()), amountToSend);
+
+        // receive 500 project tokens as a result
+        uint256 projectTokenAmount =
+            jbMultiTerminal().pay{value: amountToSend}(1, JBConstants.NATIVE_TOKEN, amountToSend, user, 0, "", "");
+
+        // Approve the sucker to use those project tokens received by the user (we are still pranked as user)
+        IERC20(address(projectOneToken)).approve(address(suckerGlobal), projectTokenAmount);
+
+        // Call prepare which uses our project tokens to retrieve (redeem) for our backing tokens (test token)
+        suckerGlobal.prepare(projectTokenAmount, user, maxRedeemed, JBConstants.NATIVE_TOKEN);
+        vm.stopPrank();
+
+        // Give the root sender some eth to pay the fees
+        vm.deal(rootSender, 1 ether);
+
+        // Initiates the bridging
+        vm.prank(rootSender);
+        suckerGlobal.toRemote{value: 1 ether}(JBConstants.NATIVE_TOKEN);
+
+        // Fees are paid but balance isn't zero (excess msg.value is returned)
+        assert(rootSender.balance < 1 ether);
+        assert(rootSender.balance > 0);
+
+        // Use CCIP local to initiate the transfer on the L2
+        ccipLocalSimulatorFork.switchChainAndRouteMessage(arbSepoliaFork);
+
+        // Check that the tokens were transferred
+        assertEq(address(suckerGlobal).balance, maxRedeemed);
+
+        // This is the most simple verification that messages are being sent and received though
+        // Meaning CCIP transferred the data to our sucker on L2's inbox
+        bytes32 inboxRoot = suckerGlobal.inboxOf(JBConstants.NATIVE_TOKEN).root;
+        assertNotEq(inboxRoot, bytes32(0));
+    }
+
+    function test_forkTokenTransfer() external {
+        // Declare test actors and parameters
+        address rootSender = makeAddr("rootSender");
+        address user = makeAddr("him");
+        uint256 amountToSend = 100;
+        uint256 maxRedeemed = amountToSend / 2;
+
+        // Select our L1 fork to begin this test.
+        vm.selectFork(sepoliaFork);
+
+        // Give ourselves test tokens
+        ccipBnM.drip(address(user));
+
+        // Map the token
+        JBTokenMapping memory map = JBTokenMapping({
+            localToken: address(ccipBnM),
+            minGas: 200_000,
+            remoteToken: address(ccipBnMArbSepolia),
+            minBridgeAmount: 1
+        });
+
+        vm.prank(multisig());
+        suckerGlobal.mapToken(map);
+
+        // Let the terminal spend our test tokens so we can pay and receive project tokens
+        vm.startPrank(user);
+        ccipBnM.approve(address(jbMultiTerminal()), amountToSend);
+
+        // receive 500 project tokens as a result
+        uint256 projectTokenAmount = jbMultiTerminal().pay(1, address(ccipBnM), amountToSend, user, 0, "", "");
+
+        // Approve the sucker to use those project tokens received by the user (we are still pranked as user)
+        IERC20(address(projectOneToken)).approve(address(suckerGlobal), projectTokenAmount);
+
+        // Call prepare which uses our project tokens to retrieve (redeem) for our backing tokens (test token)
+        suckerGlobal.prepare(projectTokenAmount, user, maxRedeemed, address(ccipBnM));
+        vm.stopPrank();
+
+        // Give the root sender some eth to pay the fees
+        vm.deal(rootSender, 1 ether);
+
+        // Initiates the bridging
+        vm.prank(rootSender);
+        suckerGlobal.toRemote{value: 1 ether}(address(ccipBnM));
+
+        // Fees are paid but balance isn't zero (excess msg.value is returned)
+        assert(rootSender.balance < 1 ether);
+        assert(rootSender.balance > 0);
+
+        // Use CCIP local to initiate the transfer on the L2
+        ccipLocalSimulatorFork.switchChainAndRouteMessage(arbSepoliaFork);
+
+        // Check that the tokens were transferred
+        assertEq(ccipBnMArbSepolia.balanceOf(address(suckerGlobal)), maxRedeemed);
+
+        // This is the most simple verification that messages are being sent and received though
+        // Meaning CCIP transferred the data to our sucker on L2's inbox
+        bytes32 inboxRoot = suckerGlobal.inboxOf(address(ccipBnMArbSepolia)).root;
+        assertNotEq(inboxRoot, bytes32(0));
+
+        // TODO: Maybe test claiming but it was working in previous version from another repo
+        // Setup claim data
+        /* JBLeaf memory _leaf = JBLeaf({
+            index: 1,
+            beneficiary: user,
+            projectTokenAmount: projectTokenAmount,
+            terminalTokenAmount: maxRedeemed
+        });
+
+        // faux proof data for test claim
+        bytes32[32] memory _proof;
+
+        JBClaim memory _claimData = JBClaim({token: address(ccipBnMArbSepolia), leaf: _leaf, proof: _proof});
+
+        suckerGlobal.testClaim(_claimData); */
+    }
+}

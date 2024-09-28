@@ -43,7 +43,6 @@ contract JBArbitrumSucker is JBSucker, IJBArbitrumSucker {
 
     error JBArbitrumSucker_ChainNotSupported(uint256 chainId);
     error JBArbitrumSucker_NotEnoughGas(uint256 payment, uint256 cost);
-    error JBArbitrumSucker_UnexpectedMsgValue(uint256 value);
 
     //*********************************************************************//
     // --------------- public immutable stored properties ---------------- //
@@ -148,7 +147,7 @@ contract JBArbitrumSucker is JBSucker, IJBArbitrumSucker {
     /// @param remoteToken Information about the remote token being bridged to.
     function _sendRoot(uint256 transportPayment, address token, JBRemoteToken memory remoteToken) internal override {
         // Bridge expects to be paid
-        if (transportPayment == 0 && LAYER == JBLayer.L1) revert JBArbitrumSucker_UnexpectedMsgValue(transportPayment);
+        if (transportPayment == 0 && LAYER == JBLayer.L1) revert JBSucker_ExpectedMsgValue();
 
         // Get the outbox in storage.
         JBOutboxTree storage outbox = _outboxOf[token];
@@ -205,7 +204,7 @@ contract JBArbitrumSucker is JBSucker, IJBArbitrumSucker {
 
         // Revert if there's a `msg.value`. Sending a message to L1 does not require any payment.
         if (msg.value != 0) {
-            revert JBArbitrumSucker_UnexpectedMsgValue(msg.value);
+            revert JBSucker_UnexpectedMsgValue(msg.value);
         }
 
         // If the token is an ERC-20, bridge it to the peer.

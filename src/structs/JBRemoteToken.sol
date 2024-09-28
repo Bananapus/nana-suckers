@@ -6,6 +6,7 @@ pragma solidity ^0.8.0;
 /// @custom:member addr The address of the token on the remote chain.
 /// @custom:member minBridgeAmount The minimum amount to bridge.
 struct JBRemoteToken {
+    bool enabled;
     uint32 minGas;
     address addr;
     uint256 minBridgeAmount;

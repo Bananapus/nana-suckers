@@ -31,8 +31,6 @@ contract JBOptimismSucker is JBSucker, IJBOptimismSucker {
     // --------------------------- custom errors ------------------------- //
     //*********************************************************************//
 
-    error JBOptimismSucker_UnexpectedMsgValue(uint256 value);
-
     //*********************************************************************//
     // --------------- public immutable stored properties ---------------- //
     //*********************************************************************//
@@ -101,7 +99,7 @@ contract JBOptimismSucker is JBSucker, IJBOptimismSucker {
 
         // Revert if there's a `msg.value`. The OP bridge does not expect to be paid.
         if (transportPayment != 0) {
-            revert JBOptimismSucker_UnexpectedMsgValue(transportPayment);
+            revert JBSucker_UnexpectedMsgValue(transportPayment);
         }
 
         // Get the outbox in storage.

@@ -22,7 +22,9 @@
     "@bananapus/core": "^0.0.32",
     "@bananapus/permission-ids": "^0.0.12",
     "@openzeppelin/contracts": "^5.0.2",
-    "@prb/math": "^4.0.3"
+    "@prb/math": "^4.0.3",
+    "@chainlink/contracts-ccip": "^1.4.0",
+    "@chainlink/local": "github:smartcontractkit/chainlink-local"
   },
   "devDependencies": {
     "@sphinx-labs/plugins": "^0.33.0"

@@ -4,14 +4,16 @@ pragma solidity ^0.8.0;
 import {IJBController} from "@bananapus/core/src/interfaces/IJBController.sol";
 import {IJBDirectory} from "@bananapus/core/src/interfaces/IJBDirectory.sol";
 import {IJBTokens} from "@bananapus/core/src/interfaces/IJBTokens.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {JBAddToBalanceMode} from "../enums/JBAddToBalanceMode.sol";
 import {JBInboxTreeRoot} from "../structs/JBInboxTreeRoot.sol";
 import {JBOutboxTree} from "../structs/JBOutboxTree.sol";
 import {JBRemoteToken} from "../structs/JBRemoteToken.sol";
 import {JBTokenMapping} from "../structs/JBTokenMapping.sol";
+import {JBMessageRoot} from "../structs/JBMessageRoot.sol";
 
-interface IJBSucker {
+interface IJBSucker is IERC165 {
     event Claimed(
         address beneficiary,
         address token,
@@ -59,6 +61,10 @@ interface IJBSucker {
         address token
     )
         external;
+
+    function toRemote(address token) external payable;
+    function fromRemote(JBMessageRoot calldata root) external payable;
+
     function mapToken(JBTokenMapping calldata map) external;
     function mapTokens(JBTokenMapping[] calldata maps) external;
 }
