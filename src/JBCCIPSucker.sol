@@ -29,9 +29,11 @@ contract JBCCIPSucker is JBSucker, IAny2EVMMessageReceiver {
     using MerkleLib for MerkleLib.Tree;
     using BitMaps for BitMaps.BitMap;
 
-    ICCIPRouter internal immutable CCIP_ROUTER;
-    uint256 public remoteChainId;
-    uint64 public remoteChainSelector;
+    ICCIPRouter public immutable CCIP_ROUTER;
+
+    uint256 public immutable REMOTE_CHAIN_ID;
+
+    uint64 public immutable REMOTE_CHAIN_SELECTOR;
 
     //*********************************************************************//
     // --------------------------- custom errors ------------------------- //
@@ -49,14 +51,13 @@ contract JBCCIPSucker is JBSucker, IAny2EVMMessageReceiver {
         IJBDirectory directory,
         IJBTokens tokens,
         IJBPermissions permissions,
-        address peer,
-        JBAddToBalanceMode atbMode
+        JBAddToBalanceMode addToBalanceMode
     )
-        JBSucker(directory, permissions, tokens, peer, atbMode, IJBCCIPSuckerDeployer(msg.sender).TEMP_ID_STORE())
+        JBSucker(directory, permissions, tokens, addToBalanceMode)
     {
-        remoteChainId = IJBCCIPSuckerDeployer(msg.sender).REMOTE_CHAIN_ID();
-        remoteChainSelector = IJBCCIPSuckerDeployer(msg.sender).REMOTE_CHAIN_SELECTOR();
-        CCIP_ROUTER = ICCIPRouter(CCIPHelper.routerOfChain(block.chainid));
+        REMOTE_CHAIN_ID = IJBCCIPSuckerDeployer(msg.sender).remoteChainId();
+        REMOTE_CHAIN_SELECTOR = IJBCCIPSuckerDeployer(msg.sender).remoteChainSelector();
+        CCIP_ROUTER = IJBCCIPSuckerDeployer(msg.sender).ccipRouter();
     }
 
     //*********************************************************************//
@@ -67,29 +68,22 @@ contract JBCCIPSucker is JBSucker, IAny2EVMMessageReceiver {
     /// @param transportPayment the amount of `msg.value` that is going to get paid for sending this message.
     /// @param token The token to bridge the outbox tree for.
     /// @param remoteToken Information about the remote token being bridged to.
-    function _sendRoot(uint256 transportPayment, address token, JBRemoteToken memory remoteToken) internal override {
+
+    function _sendRootOverAMB(
+        uint256 transportPayment,
+        uint256,
+        address token,
+        uint256 amount,
+        JBRemoteToken memory remoteToken,
+        JBMessageRoot memory sucker_message
+    )
+        internal
+        override
+    {
+        // function _sendRoot(uint256 transportPayment, address token, JBRemoteToken memory remoteToken) internal
+        // override {
         // Make sure we are attempting to pay the bridge
         if (transportPayment == 0) revert JBSucker_ExpectedMsgValue();
-
-        // Ensure the token is mapped to an address on the remote chain.
-        if (remoteToken.addr == address(0)) revert JBSucker_TokenNotMapped(token);
-
-        // Get the outbox in storage.
-        JBOutboxTree storage outbox = _outboxOf[token];
-
-        // Get the amount to send and then clear it from the outbox tree.
-        uint256 amount = outbox.balance;
-        delete outbox.balance;
-
-        // Increment the outbox tree's nonce.
-        uint64 nonce = ++outbox.nonce;
-
-        bytes32 root = outbox.tree.root();
-        uint256 index = outbox.tree.count - 1;
-
-        // Emit an event for the relayers to watch for.
-        // We do this before changing the `token` in the case where it is the native asset.
-        emit RootToRemote({root: root, token: token, index: index, nonce: nonce, caller: msg.sender});
 
         // Wrap the token if it's native
         if (token == JBConstants.NATIVE_TOKEN) {
@@ -107,14 +101,8 @@ contract JBCCIPSucker is JBSucker, IAny2EVMMessageReceiver {
 
         // Create an EVM2AnyMessage struct in memory with necessary information for sending a cross-chain message
         Client.EVM2AnyMessage memory message = Client.EVM2AnyMessage({
-            receiver: abi.encode(PEER),
-            data: abi.encode(
-                JBMessageRoot({
-                    token: remoteToken.addr,
-                    amount: amount,
-                    remoteRoot: JBInboxTreeRoot({nonce: nonce, root: root})
-                })
-            ),
+            receiver: abi.encode(PEER()),
+            data: abi.encode(sucker_message),
             tokenAmounts: tokenAmounts,
             extraArgs: Client._argsToBytes(
                 // Additional arguments, setting gas limit
@@ -126,7 +114,7 @@ contract JBCCIPSucker is JBSucker, IAny2EVMMessageReceiver {
         });
 
         // Get the fee required to send the CCIP message
-        uint256 fees = CCIP_ROUTER.getFee({destinationChainSelector: remoteChainSelector, message: message});
+        uint256 fees = CCIP_ROUTER.getFee({destinationChainSelector: REMOTE_CHAIN_SELECTOR, message: message});
 
         if (fees > transportPayment) {
             revert JBSucker_InsufficientMsgValue(transportPayment, fees);
@@ -138,7 +126,7 @@ contract JBCCIPSucker is JBSucker, IAny2EVMMessageReceiver {
         // TODO: Handle this messageId- for later version with message retries
         // Send the message through the router and store the returned message ID
         /* messageId =  */
-        CCIP_ROUTER.ccipSend{value: fees}({destinationChainSelector: remoteChainSelector, message: message});
+        CCIP_ROUTER.ccipSend{value: fees}({destinationChainSelector: REMOTE_CHAIN_SELECTOR, message: message});
 
         // Refund remaining balance.
         (bool sent,) = msg.sender.call{value: msg.value - fees}("");
@@ -158,7 +146,7 @@ contract JBCCIPSucker is JBSucker, IAny2EVMMessageReceiver {
         address origin = abi.decode(any2EvmMessage.sender, (address));
 
         // Make sure that the message came from our peer.
-        if (origin != PEER || any2EvmMessage.sourceChainSelector != remoteChainSelector) {
+        if (origin != PEER() || any2EvmMessage.sourceChainSelector != REMOTE_CHAIN_SELECTOR) {
             revert JBSucker_NotPeer(origin);
         }
 
@@ -217,7 +205,7 @@ contract JBCCIPSucker is JBSucker, IAny2EVMMessageReceiver {
     /// @return chainId of the peer.
     function peerChainId() external view virtual override returns (uint256 chainId) {
         // Return the remote chain id
-        return remoteChainId;
+        return REMOTE_CHAIN_ID;
     }
 
     /// @notice IERC165 supports an interfaceId

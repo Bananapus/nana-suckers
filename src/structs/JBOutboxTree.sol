@@ -8,8 +8,10 @@ import {MerkleLib} from "../utils/MerkleLib.sol";
 /// @custom:member nonce The nonce of the outbox.
 /// @custom:member balance The balance of the outbox.
 /// @custom:member tree The merkle tree.
+/// @custom:member lastestCountSend The count of the tree when the most recent message was send.
 struct JBOutboxTree {
     uint64 nonce;
     uint256 balance;
     MerkleLib.Tree tree;
+    uint256 lastestCountSend;
 }

@@ -14,6 +14,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {BitMaps} from "@openzeppelin/contracts/utils/structs/BitMaps.sol";
 import {ERC165, IERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
+import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 
 import {JBAddToBalanceMode} from "./enums/JBAddToBalanceMode.sol";
 import {IJBSucker} from "./interfaces/IJBSucker.sol";
@@ -25,6 +26,7 @@ import {JBOutboxTree} from "./structs/JBOutboxTree.sol";
 import {JBRemoteToken} from "./structs/JBRemoteToken.sol";
 import {JBTokenMapping} from "./structs/JBTokenMapping.sol";
 import {MerkleLib} from "./utils/MerkleLib.sol";
+import {JBSuckerState} from "./enums/JBSuckerState.sol";
 
 /// @notice An abstract contract for bridging a Juicebox project's tokens and the corresponding funds to and from a
 /// remote chain.
@@ -32,7 +34,7 @@ import {MerkleLib} from "./utils/MerkleLib.sol";
 /// chain to the remote chain, and the inbox tree is used to receive from the remote chain to the local chain.
 /// @dev Throughout this contract, "terminal token" refers to any token accepted by a project's terminal.
 /// @dev This contract does *NOT* support tokens that have a fee on regular transfers and rebasing tokens.
-abstract contract JBSucker is JBPermissioned, ERC165, IJBSucker {
+abstract contract JBSucker is JBPermissioned, Initializable, ERC165, IJBSucker {
     using BitMaps for BitMaps.BitMap;
     using MerkleLib for MerkleLib.Tree;
     using SafeERC20 for IERC20;
@@ -47,16 +49,19 @@ abstract contract JBSucker is JBPermissioned, ERC165, IJBSucker {
     error JBSucker_InvalidProof(bytes32 root, bytes32 inboxRoot);
     error JBSucker_LeafAlreadyExecuted(address token, uint256 index);
     error JBSucker_ManualNotAllowed(JBAddToBalanceMode mode);
+    error JBSucker_DeprecationTimestampTooSoon(uint256 givenTime, uint256 minimumTime);
     error JBSucker_NoTerminalForToken(uint256 projectId, address token);
     error JBSucker_NotPeer(address caller);
     error JBSucker_QueueInsufficientSize(uint256 amount, uint256 minimumAmount);
     error JBSucker_TokenNotMapped(address token);
+    error JBSucker_TokenHasInvalidEmergencyHatchState(address token);
     error JBSucker_TokenAlreadyMapped(address localToken, address mappedTo);
     error JBSucker_UnexpectedMsgValue(uint256 value);
     error JBSucker_ExpectedMsgValue();
     error JBSucker_InsufficientMsgValue(uint256 received, uint256 expected);
     error JBSucker_ZeroBeneficiary();
     error JBSucker_ZeroERC20Token();
+    error JBSucker_Deprecated();
 
     //*********************************************************************//
     // ------------------------- public constants ------------------------ //
@@ -91,12 +96,6 @@ abstract contract JBSucker is JBPermissioned, ERC165, IJBSucker {
     /// @notice The directory of terminals and controllers for projects.
     IJBDirectory public immutable override DIRECTORY;
 
-    /// @notice The peer sucker on the remote chain.
-    address public immutable override PEER;
-
-    /// @notice The ID of the project (on the local chain) that this sucker is associated with.
-    uint256 public immutable override PROJECT_ID;
-
     /// @notice The contract that manages token minting and burning.
     IJBTokens public immutable override TOKENS;
 
@@ -112,6 +111,15 @@ abstract contract JBSucker is JBPermissioned, ERC165, IJBSucker {
     //*********************************************************************//
     // -------------------- internal stored properties ------------------- //
     //*********************************************************************//
+
+    /// @notice The timestamp after which the sucker is entirely deprecated.
+    uint256 internal deprecatedAfter;
+
+    /// @notice The ID of the project (on the local chain) that this sucker is associated with.
+    uint256 private localProjectId;
+
+    /// @notice The peer sucker on the remote chain.
+    address private remotePeer;
 
     /// @notice Tracks whether individual leaves in a given token's merkle tree have been executed (to prevent
     /// double-spending).
@@ -138,33 +146,48 @@ abstract contract JBSucker is JBPermissioned, ERC165, IJBSucker {
     /// @param directory A contract storing directories of terminals and controllers for each project.
     /// @param permissions A contract storing permissions.
     /// @param tokens A contract that manages token minting and burning.
-    /// @param peer The address of the peer sucker on the remote chain.
     /// @param addToBalanceMode The mode of adding tokens to balance.
-    /// @param projectId The ID of the project (on the local chain) that this sucker is associated with.
     constructor(
         IJBDirectory directory,
         IJBPermissions permissions,
         IJBTokens tokens,
-        address peer,
-        JBAddToBalanceMode addToBalanceMode,
-        uint256 projectId
+        JBAddToBalanceMode addToBalanceMode
     )
         JBPermissioned(permissions)
     {
         DIRECTORY = directory;
         TOKENS = tokens;
-        PEER = peer == address(0) ? address(this) : peer;
         DEPLOYER = msg.sender;
         ADD_TO_BALANCE_MODE = addToBalanceMode;
-        PROJECT_ID = projectId;
+
+        // Make it so the singleton can't be initialized.
+        _disableInitializers();
 
         // Sanity check: make sure the merkle lib uses the same tree depth.
         assert(MerkleLib.TREE_DEPTH == _TREE_DEPTH);
     }
 
+    /// @notice Initializes the sucker with the project ID and peer address.
+    /// @param projectId The ID of the project (on the local chain) that this sucker is associated with.
+    /// @param peer The peer sucker on the remote chain.
+    function initialize(uint256 projectId, address peer) public initializer {
+        localProjectId = projectId;
+        remotePeer = peer;
+    }
+
     //*********************************************************************//
     // ------------------------ external views --------------------------- //
     //*********************************************************************//
+
+    /// @notice The ID of the project (on the local chain) that this sucker is associated with.
+    function PROJECT_ID() public view returns (uint256) {
+        return localProjectId;
+    }
+
+    /// @notice The peer sucker on the remote chain.
+    function PEER() public view returns (address) {
+        return remotePeer;
+    }
 
     /// @notice The inbox merkle tree root for a given token.
     /// @param token The local terminal token to get the inbox for.
@@ -193,6 +216,31 @@ abstract contract JBSucker is JBPermissioned, ERC165, IJBSucker {
     /// @param token The local terminal token to get the remote token for.
     function remoteTokenFor(address token) external view returns (JBRemoteToken memory) {
         return _remoteTokenFor[token];
+    }
+
+    /// @notice Reports the deprecation state of the sucker.
+    /// @return state The current deprecation state
+    function state() public view override returns (JBSuckerState) {
+        uint256 _deprecatedAfter = deprecatedAfter;
+
+        // The sucker is fully functional, no deprecation has been set yet.
+        if (_deprecatedAfter == 0) {
+            return JBSuckerState.ENABLED;
+        }
+
+        // The sucker will soon be considered deprecated, this functions only as a warning to users.
+        if (block.timestamp < _deprecatedAfter - _maxMessagingDelay()) {
+            return JBSuckerState.DEPRECATION_PENDING;
+        }
+
+        // The sucker will no longer send new roots to the pair, but it will accept new incoming roots.
+        if (block.timestamp < _deprecatedAfter) {
+            return JBSuckerState.SENDING_DISABLED;
+        }
+
+        // The sucker is now in the final state of deprecation. It will no longer allow new roots and if needed it will
+        // let users emergency exit.
+        return JBSuckerState.DEPRECATED;
     }
 
     function supportsInterface(bytes4 interfaceId) public view virtual override(ERC165, IERC165) returns (bool) {
@@ -300,19 +348,12 @@ abstract contract JBSucker is JBPermissioned, ERC165, IJBSucker {
             caller: msg.sender
         });
 
-        // If this contract's add to balance mode is `ON_CLAIM`, add the redeemed funds to the project's balance.
-        if (ADD_TO_BALANCE_MODE == JBAddToBalanceMode.ON_CLAIM) {
-            _addToBalance({token: claimData.token, amount: claimData.leaf.terminalTokenAmount});
-        }
-
-        // Mint the project tokens for the beneficiary.
-        // slither-disable-next-line calls-loop,unused-return
-        IJBController(address(DIRECTORY.controllerOf(PROJECT_ID))).mintTokensOf({
-            projectId: PROJECT_ID,
-            tokenCount: claimData.leaf.projectTokenCount,
-            beneficiary: claimData.leaf.beneficiary,
-            memo: "",
-            useReservedPercent: false
+        // Give the user their project tokens, send the project its funds.
+        _handleClaim({
+            terminalToken: claimData.token,
+            terminalTokenAmount: claimData.leaf.terminalTokenAmount,
+            projectTokenAmount: claimData.leaf.projectTokenCount,
+            beneficiary: claimData.leaf.beneficiary
         });
     }
 
@@ -334,7 +375,7 @@ abstract contract JBSucker is JBPermissioned, ERC165, IJBSucker {
         // If the received tree's nonce is greater than the current inbox tree's nonce, update the inbox tree.
         // We can't revert because this could be a native token transfer. If we reverted, we would lose the native
         // tokens.
-        if (root.remoteRoot.nonce > inbox.nonce) {
+        if (root.remoteRoot.nonce > inbox.nonce && state() != JBSuckerState.DEPRECATED) {
             inbox.nonce = root.remoteRoot.nonce;
             inbox.root = root.remoteRoot.root;
             emit NewInboxTreeRoot({
@@ -354,14 +395,20 @@ abstract contract JBSucker is JBPermissioned, ERC165, IJBSucker {
         address token = map.localToken;
         JBRemoteToken memory currentMapping = _remoteTokenFor[token];
 
+        // Once the emergency hatch for a token is enabled it can't be disabled.
+        if (currentMapping.emergencyHatch) {
+            revert JBSucker_TokenHasInvalidEmergencyHatchState(token);
+        }
+
         // Validate the token mapping according to the rules of the sucker.
         _validateTokenMapping(map);
 
         // The caller must be the project owner or have the `QUEUE_RULESETS` permission from them.
         // slither-disable-next-line calls-loop
+        uint256 projectId = PROJECT_ID();
         _requirePermissionFrom({
-            account: DIRECTORY.PROJECTS().ownerOf(PROJECT_ID),
-            projectId: PROJECT_ID,
+            account: DIRECTORY.PROJECTS().ownerOf(projectId),
+            projectId: projectId,
             permissionId: JBPermissionIds.MAP_SUCKER_TOKEN
         });
 
@@ -382,9 +429,18 @@ abstract contract JBSucker is JBPermissioned, ERC165, IJBSucker {
             _sendRoot({transportPayment: 0, token: token, remoteToken: currentMapping});
         }
 
+        // There is a niche edge-case where if the remote sucker has send us tokens but this contract was not deployed
+        // we might have missed adding the received amount to the `amountToAddToBalanceOf`.
+        // If we have no items in the outbox tree we can safely add the received amount to the `amountToAddToBalanceOf`.
+        // As this sucker should have no balance of the specific token.
+        if (_outboxOf[token].tree.count == 0 && amountToAddToBalanceOf[token] == 0) {
+            amountToAddToBalanceOf[token] = _balanceOf({token: token, addr: address(this)});
+        }
+
         // Update the token mapping.
         _remoteTokenFor[token] = JBRemoteToken({
             enabled: map.remoteToken != address(0),
+            emergencyHatch: false,
             minGas: map.minGas,
             // This is done so that a token can be disabled and then enabled again
             // while ensuring the remoteToken never changes (unless it hasn't been used yet)
@@ -405,6 +461,29 @@ abstract contract JBSucker is JBPermissioned, ERC165, IJBSucker {
         for (uint256 i; i < numberOfMaps; i++) {
             mapToken(maps[i]);
         }
+    }
+
+    /// @notice Enables the emergency hatch for a list of tokens, allowing users to exit on the chain they deposited on.
+    /// @dev For use when a token or a few tokens are no longer compatible with a bridge.
+    /// @param tokens The terminal tokens to enable the emergency hatch for.
+    function enableEmergencyHatchFor(address[] calldata tokens) external {
+        // The caller must be the project owner or have the `QUEUE_RULESETS` permission from them.
+        // slither-disable-next-line calls-loop
+        uint256 projectId = PROJECT_ID();
+        _requirePermissionFrom({
+            account: DIRECTORY.PROJECTS().ownerOf(projectId),
+            projectId: projectId,
+            permissionId: JBPermissionIds.ENABLE_EMERGENCY_HATCH
+        });
+
+        // Enable the emergency hatch for each token.
+        for (uint256 i; i < tokens.length; i++) {
+            // We have an invariant where if emergencyHatch is true, enabled should be false.
+            _remoteTokenFor[tokens[i]].enabled = false;
+            _remoteTokenFor[tokens[i]].emergencyHatch = true;
+        }
+
+        // TODO: Emit event
     }
 
     /// @notice Prepare project tokens and the redemption amount backing them to be bridged to the remote chain.
@@ -429,7 +508,7 @@ abstract contract JBSucker is JBPermissioned, ERC165, IJBSucker {
         }
 
         // Get the project's token.
-        IERC20 projectToken = IERC20(address(TOKENS.tokenOf(PROJECT_ID)));
+        IERC20 projectToken = IERC20(address(TOKENS.tokenOf(PROJECT_ID())));
         if (address(projectToken) == address(0)) {
             revert JBSucker_ZeroERC20Token();
         }
@@ -439,11 +518,11 @@ abstract contract JBSucker is JBPermissioned, ERC165, IJBSucker {
             revert JBSucker_TokenNotMapped(token);
         }
 
-        // TODO: Handle the edge-edge-case where the PEER has briged us assets before we were deployed,
-        // We need to check that we have never received a nonce and that we have never send a nonce, but we do have
-        // a balance of the token. To handle this edge-case we should either have both peers message each other to
-        // verify they can talk or we add the balance we had to the `amountToAddToBalanceOf` and wait for us to recieve
-        // the next root with the next nonce, as that contains all the depositors from the prev batch as well.
+        // Make sure that the sucker still allows sending new messaged.
+        JBSuckerState deprecationState = state();
+        if (deprecationState == JBSuckerState.DEPRECATED || deprecationState == JBSuckerState.SENDING_DISABLED) {
+            revert JBSucker_Deprecated();
+        }
 
         // Transfer the tokens to this contract.
         // slither-disable-next-line reentrancy-events,reentrancy-benign
@@ -486,20 +565,22 @@ abstract contract JBSucker is JBPermissioned, ERC165, IJBSucker {
     {
         projectToken;
 
+        uint256 projectId = PROJECT_ID();
+
         // Get the project's primary terminal for `token`. We will redeem from this terminal.
         IJBRedeemTerminal terminal =
-            IJBRedeemTerminal(address(DIRECTORY.primaryTerminalOf({projectId: PROJECT_ID, token: token})));
+            IJBRedeemTerminal(address(DIRECTORY.primaryTerminalOf({projectId: projectId, token: token})));
 
         // If the project doesn't have a primary terminal for `token`, revert.
         if (address(terminal) == address(0)) {
-            revert JBSucker_NoTerminalForToken(PROJECT_ID, token);
+            revert JBSucker_NoTerminalForToken(projectId, token);
         }
 
         // Redeem the tokens.
         uint256 balanceBefore = _balanceOf(token, address(this));
         reclaimedAmount = terminal.redeemTokensOf({
             holder: address(this),
-            projectId: PROJECT_ID,
+            projectId: projectId,
             tokenToReclaim: token,
             redeemCount: count,
             minTokensReclaimed: minTokensReclaimed,
@@ -529,6 +610,63 @@ abstract contract JBSucker is JBPermissioned, ERC165, IJBSucker {
         _sendRoot({transportPayment: msg.value, token: token, remoteToken: remoteToken});
     }
 
+    /// @notice Lets user exit on the chain they deposited in a scenario where the bridge is no longer functional.
+    /// @param claimData The terminal token, merkle tree leaf, and proof for the claim
+    function exitThroughEmergencyHatch(JBClaim calldata claimData) external {
+        // Does all the needed validation to ensure that the claim is valid *and* that claiming through the emergency
+        // hatch is allowed.
+        _validateForEmergencyExit({
+            projectTokenCount: claimData.leaf.projectTokenCount,
+            terminalToken: claimData.token,
+            terminalTokenAmount: claimData.leaf.terminalTokenAmount,
+            beneficiary: claimData.leaf.beneficiary,
+            index: claimData.leaf.index,
+            leaves: claimData.proof
+        });
+
+        // Decrease the outstanding balance for this token.
+        _outboxOf[claimData.token].balance -= claimData.leaf.terminalTokenAmount;
+
+        // Give the user their project tokens, send the project its funds.
+        _handleClaim({
+            terminalToken: claimData.token,
+            terminalTokenAmount: claimData.leaf.terminalTokenAmount,
+            projectTokenAmount: claimData.leaf.projectTokenCount,
+            beneficiary: claimData.leaf.beneficiary
+        });
+    }
+
+    /// @notice Set or remove the time after which this sucker will be deprecated, once deprecated the sucker will no
+    /// longer be functional and it will let all users exit.
+    /// @param timestamp The time after which the sucker will be deprecated. Or `0` to remove the upcoming deprecation.
+    function setDeprecation(uint40 timestamp) external {
+        // As long as the sucker has not reached the final deprecation state its deprecation time can be
+        // extended/shortened.
+        if (state() == JBSuckerState.DEPRECATED) revert JBSucker_Deprecated();
+
+        // slither-disable-next-line calls-loop
+        // TODO: Change permissionId?
+        uint256 projectId = PROJECT_ID();
+        _requirePermissionFrom({
+            account: DIRECTORY.PROJECTS().ownerOf(projectId),
+            projectId: projectId,
+            permissionId: JBPermissionIds.MAP_SUCKER_TOKEN
+        });
+
+        // This is the earliest time for when the sucker can be considered deprecated.
+        // There is a mandatory delay to allow for remaining messages to be received.
+        // This should be called on both sides of the suckers, preferably with a matching timestamp.
+        uint256 nextEarliestDeprecationTime = block.timestamp + _maxMessagingDelay();
+
+        // The deprecation can be entirely disabled *or* it has to be later than the earliest possible time.
+        if (timestamp == 0 || timestamp < nextEarliestDeprecationTime) {
+            revert JBSucker_DeprecationTimestampTooSoon(timestamp, nextEarliestDeprecationTime);
+        }
+
+        deprecatedAfter = timestamp;
+        emit DeprecationTimeUpdated(timestamp, msg.sender);
+    }
+
     //*********************************************************************//
     // ---------------------------- receive  ----------------------------- //
     //*********************************************************************//
@@ -555,13 +693,15 @@ abstract contract JBSucker is JBPermissioned, ERC165, IJBSucker {
             amountToAddToBalanceOf[token] = addableAmount - amount;
         }
 
+        uint256 projectId = PROJECT_ID();
+
         // Get the project's primary terminal for the token.
         // slither
         // slither-disable-next-line calls-loop
-        IJBTerminal terminal = DIRECTORY.primaryTerminalOf({projectId: PROJECT_ID, token: token});
+        IJBTerminal terminal = DIRECTORY.primaryTerminalOf({projectId: projectId, token: token});
 
         // slither-disable-next-line incorrect-equality
-        if (address(terminal) == address(0)) revert JBSucker_NoTerminalForToken(PROJECT_ID, token);
+        if (address(terminal) == address(0)) revert JBSucker_NoTerminalForToken(projectId, token);
 
         // Perform the `addToBalance`.
         if (token != JBConstants.NATIVE_TOKEN) {
@@ -572,7 +712,7 @@ abstract contract JBSucker is JBPermissioned, ERC165, IJBSucker {
 
             // slither-disable-next-line calls-loop
             terminal.addToBalanceOf({
-                projectId: PROJECT_ID,
+                projectId: projectId,
                 token: token,
                 amount: amount,
                 shouldReturnHeldFees: false,
@@ -587,7 +727,7 @@ abstract contract JBSucker is JBPermissioned, ERC165, IJBSucker {
             // If the token is the native token, use `msg.value`.
             // slither-disable-next-line arbitrary-send-eth,calls-loop
             terminal.addToBalanceOf({
-                projectId: PROJECT_ID,
+                projectId: projectId,
                 token: token,
                 amount: amount,
                 shouldReturnHeldFees: false,
@@ -596,12 +736,43 @@ abstract contract JBSucker is JBPermissioned, ERC165, IJBSucker {
             });
         }
     }
+
+    /// @notice The action(s) to perform after a user has succesfully proven their claim.
+    /// @param terminalToken The terminal token being sucked.
+    /// @param terminalTokenAmount The amount of terminal tokens.
+    /// @param projectTokenAmount The amount of project tokens.
+    /// @param beneficiary The beneficiary of the project tokens.
+    function _handleClaim(
+        address terminalToken,
+        uint256 terminalTokenAmount,
+        uint256 projectTokenAmount,
+        address beneficiary
+    )
+        internal
+    {
+        // If this contract's add to balance mode is `ON_CLAIM`, add the redeemed funds to the project's balance.
+        if (ADD_TO_BALANCE_MODE == JBAddToBalanceMode.ON_CLAIM) {
+            _addToBalance({token: terminalToken, amount: terminalTokenAmount});
+        }
+
+        uint256 projectId = PROJECT_ID();
+
+        // Mint the project tokens for the beneficiary.
+        // slither-disable-next-line calls-loop,unused-return
+        IJBController(address(DIRECTORY.controllerOf(projectId))).mintTokensOf({
+            projectId: projectId,
+            tokenCount: projectTokenAmount,
+            beneficiary: beneficiary,
+            memo: "",
+            useReservedPercent: false
+        });
+    }
+
     /// @notice Inserts a new leaf into the outbox merkle tree for the specified `token`.
     /// @param projectTokenCount The amount of project tokens being redeemed.
     /// @param token The terminal token being redeemed for.
     /// @param terminalTokenAmount The amount of terminal tokens reclaimed by redeeming.
     /// @param beneficiary The beneficiary of the project tokens on the remote chain.
-
     function _insertIntoTree(
         uint256 projectTokenCount,
         address token,
@@ -650,7 +821,64 @@ abstract contract JBSucker is JBPermissioned, ERC165, IJBSucker {
     /// derived from `msg.value`)
     /// @param token The terminal token to bridge the merkle tree of.
     /// @param remoteToken The remote token which the `token` is mapped to.
-    function _sendRoot(uint256 transportPayment, address token, JBRemoteToken memory remoteToken) internal virtual;
+    function _sendRoot(uint256 transportPayment, address token, JBRemoteToken memory remoteToken) internal virtual {
+        // Ensure the token is mapped to an address on the remote chain.
+        if (remoteToken.addr == address(0)) revert JBSucker_TokenNotMapped(token);
+
+        // Make sure that the sucker still allows sending new messaged.
+        JBSuckerState deprecationState = state();
+        if (deprecationState == JBSuckerState.DEPRECATED || deprecationState == JBSuckerState.SENDING_DISABLED) {
+            revert JBSucker_Deprecated();
+        }
+
+        // Get the outbox in storage.
+        JBOutboxTree storage outbox = _outboxOf[token];
+
+        // Get the amount to send and then clear it from the outbox tree.
+        uint256 amount = outbox.balance;
+        delete outbox.balance;
+
+        // Increment the outbox tree's nonce.
+        uint64 nonce = ++outbox.nonce;
+        bytes32 root = outbox.tree.root();
+
+        uint256 count = outbox.tree.count;
+        uint256 index = count - 1;
+
+        // Update the lastestCountSend to the current count of the tree.
+        // This is used as in the fallback to allow users to withdraw locally if the bridge is reverting.
+        outbox.lastestCountSend = count;
+
+        // Emit an event for the relayers to watch for.
+        emit RootToRemote({root: root, token: token, index: index, nonce: nonce, caller: msg.sender});
+
+        // Build the message to be send.
+        JBMessageRoot memory message = JBMessageRoot({
+            token: remoteToken.addr,
+            amount: amount,
+            remoteRoot: JBInboxTreeRoot({nonce: nonce, root: root})
+        });
+
+        // Execute the chain/sucker specific logic for transferring the assets and communicating the root.
+        _sendRootOverAMB(transportPayment, index, token, amount, remoteToken, message);
+    }
+
+    function _sendRootOverAMB(
+        uint256 transportPayment,
+        uint256 index,
+        address token,
+        uint256 amount,
+        JBRemoteToken memory remoteToken,
+        JBMessageRoot memory message
+    )
+        internal
+        virtual;
+
+    /// @notice What is the maximum time it takes for a message to be received on the other side.
+    /// @dev Be sure to keep in mind if a message fails having to retry and the time it takes to retry.
+    function _maxMessagingDelay() internal pure virtual returns (uint40) {
+        return 14 days;
+    }
 
     /// @notice Validates a leaf as being in the inbox merkle tree and registers the leaf as executed (to prevent
     /// double-spending).
@@ -694,6 +922,73 @@ abstract contract JBSucker is JBPermissioned, ERC165, IJBSucker {
         // Compare the calculated root to the terminal token's inbox root. Revert if they do not match.
         if (root != _inboxOf[terminalToken].root) {
             revert JBSucker_InvalidProof(root, _inboxOf[terminalToken].root);
+        }
+    }
+
+    /// @notice Validates a leaf as being in the outbox merkle tree and not being send over the amb, and registers the
+    /// leaf as executed (to prevent double-spending).
+    /// @dev Reverts if the leaf is invalid.
+    /// @param projectTokenCount The number of project tokens which were redeemed.
+    /// @param terminalToken The terminal token that the project tokens were redeemed for.
+    /// @param terminalTokenAmount The amount of terminal tokens reclaimed by the redemption.
+    /// @param beneficiary The beneficiary which will receive the project tokens.
+    /// @param index The index of the leaf being proved in the terminal token's inbox tree.
+    /// @param leaves The leaves that prove that the leaf at the `index` is in the tree (i.e. the merkle branch that the
+    /// leaf is on).
+    function _validateForEmergencyExit(
+        uint256 projectTokenCount,
+        address terminalToken,
+        uint256 terminalTokenAmount,
+        address beneficiary,
+        uint256 index,
+        bytes32[_TREE_DEPTH] calldata leaves
+    )
+        internal
+    {
+        // Make sure that the emergencyHatch is enabled for the token.
+        if (!_remoteTokenFor[terminalToken].emergencyHatch || state() == JBSuckerState.DEPRECATED) {
+            revert JBSucker_TokenHasInvalidEmergencyHatchState(terminalToken);
+        }
+
+        // Check that this claim is within the bounds of who can claim.
+        // If the root that this leaf is in was already send then we can not let the user claim here.
+        // As it could have also been received by the peer sucker, which would then let the user claim on each side.
+        JBOutboxTree storage outboxOfToken = _outboxOf[terminalToken];
+        if (outboxOfToken.lastestCountSend >= index) {
+            revert JBSucker_LeafAlreadyExecuted(terminalToken, index);
+        }
+
+        {
+            // We re-use the same `_executedFor` mapping but we use a different slot.
+            // We can not use the regular mapping, since this claim is done for tokens being send from here to the pair.
+            // where the regular mapping is for tokens that were send on the pair to here. Even though these may seem
+            // similar they are actually completely unrelated.
+            address emergencyExitAddress = address(bytes20(keccak256(abi.encode(terminalToken))));
+
+            // Make sure the leaf has not already been executed.
+            if (_executedFor[emergencyExitAddress].get(index)) {
+                revert JBSucker_LeafAlreadyExecuted(terminalToken, index);
+            }
+
+            // Register the leaf as executed to prevent double-spending.
+            _executedFor[emergencyExitAddress].set(index);
+        }
+
+        // Calculate the root based on the leaf, the branch, and the index.
+        bytes32 root = MerkleLib.branchRoot({
+            _item: _buildTreeHash({
+                projectTokenCount: projectTokenCount,
+                terminalTokenAmount: terminalTokenAmount,
+                beneficiary: beneficiary
+            }),
+            _branch: leaves,
+            _index: index
+        });
+
+        // Compare to the current root, Revert if they do not match.
+        bytes32 resultingRoot = _outboxOf[terminalToken].tree.root();
+        if (root != resultingRoot) {
+            revert JBSucker_InvalidProof(root, resultingRoot);
         }
     }
 }

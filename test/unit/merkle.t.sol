@@ -22,11 +22,12 @@ contract MerkleUnitTest is JBSucker, Test {
             IJBDirectory(address(600)),
             IJBPermissions(address(800)),
             IJBTokens(address(700)),
-            address(0),
-            JBAddToBalanceMode.MANUAL,
-            1
+            JBAddToBalanceMode.MANUAL
         )
-    {}
+    // self.initialize(.NATIVE_TOKEN, JBConstants.NATIVE_TOKEN, JBConstants.NATIVE_TOKEN)
+    {
+        // initialize({peer: address(this), projectId: 1});
+    }
 
     function setUp() public {
         // Insert some items into the queue
@@ -87,11 +88,11 @@ contract MerkleUnitTest is JBSucker, Test {
         // Mock the token minting.
         address _mockController = address(900);
         vm.mockCall(
-            address(DIRECTORY), abi.encodeCall(IJBDirectory.controllerOf, (PROJECT_ID)), abi.encode(_mockController)
+            address(DIRECTORY), abi.encodeCall(IJBDirectory.controllerOf, (PROJECT_ID())), abi.encode(_mockController)
         );
         vm.mockCall(
             _mockController,
-            abi.encodeCall(IJBController.mintTokensOf, (PROJECT_ID, 5 ether, address(120), "", false)),
+            abi.encodeCall(IJBController.mintTokensOf, (PROJECT_ID(), 5 ether, address(120), "", false)),
             abi.encode(0)
         );
 
@@ -115,11 +116,11 @@ contract MerkleUnitTest is JBSucker, Test {
         // Mock the token minting.
         address _mockController = address(900);
         vm.mockCall(
-            address(DIRECTORY), abi.encodeCall(IJBDirectory.controllerOf, (PROJECT_ID)), abi.encode(_mockController)
+            address(DIRECTORY), abi.encodeCall(IJBDirectory.controllerOf, (PROJECT_ID())), abi.encode(_mockController)
         );
         vm.mockCall(
             _mockController,
-            abi.encodeCall(IJBController.mintTokensOf, (PROJECT_ID, 5 ether, address(120), "", false)),
+            abi.encodeCall(IJBController.mintTokensOf, (PROJECT_ID(), 5 ether, address(120), "", false)),
             abi.encode(0)
         );
 
@@ -147,10 +148,13 @@ contract MerkleUnitTest is JBSucker, Test {
         return false;
     }
 
-    function _sendRoot(
+    function _sendRootOverAMB(
         uint256 transportPayment,
+        uint256 index,
         address token,
-        JBRemoteToken memory remoteToken
+        uint256 amount,
+        JBRemoteToken memory remoteToken,
+        JBMessageRoot memory message
     )
         internal
         virtual
@@ -162,8 +166,10 @@ contract MerkleUnitTest is JBSucker, Test {
 contract DeployerUnitTest is Test {
     function testDoesntRevert() public {
         JBOptimismSuckerDeployer _deployer = new JBOptimismSuckerDeployer(
-            IJBDirectory(address(0)), IJBPermissions(address(0)), IJBTokens(address(0)), msg.sender
+            IJBDirectory(address(0)), IJBPermissions(address(0)), IJBTokens(address(0)), address(this)
         );
+        _deployer.configureLayerSpecific(IOPMessenger(address(0)), IOPStandardBridge(address(0)));
+
         _deployer.createForSender(1, bytes32(0));
     }
 }

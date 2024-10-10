@@ -11,16 +11,14 @@ contract JBBaseSucker is JBOptimismSucker {
     /// @param directory A contract storing directories of terminals and controllers for each project.
     /// @param permissions A contract storing permissions.
     /// @param tokens A contract that manages token minting and burning.
-    /// @param peer The address of the peer sucker on the remote chain.
     /// @param addToBalanceMode The mode of adding tokens to balance.
     constructor(
         IJBDirectory directory,
         IJBPermissions permissions,
         IJBTokens tokens,
-        address peer,
         JBAddToBalanceMode addToBalanceMode
     )
-        JBOptimismSucker(directory, permissions, tokens, peer, addToBalanceMode)
+        JBOptimismSucker(directory, permissions, tokens, addToBalanceMode)
     {}
 
     //*********************************************************************//

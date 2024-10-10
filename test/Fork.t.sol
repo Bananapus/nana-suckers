@@ -15,6 +15,7 @@ import {JBPermissioned} from "@bananapus/core/src/abstract/JBPermissioned.sol";
 import {JBPermissionsData} from "@bananapus/core/src/structs/JBPermissionsData.sol";
 import {IJBPermissions} from "@bananapus/core/src/interfaces/IJBPermissions.sol";
 import {JBPermissionIds} from "@bananapus/permission-ids/src/JBPermissionIds.sol";
+import {ICCIPRouter} from "src/interfaces/ICCIPRouter.sol";
 import {SafeERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {JBTokenMapping} from "../src/structs/JBTokenMapping.sol";
@@ -35,6 +36,7 @@ import {CCIPLocalSimulatorFork, Register} from "@chainlink/local/src/ccip/CCIPLo
 import {JBClaim} from "../src/structs/JBClaim.sol";
 import {JBLeaf} from "../src/structs/JBClaim.sol";
 import {MerkleLib} from "../src/utils/MerkleLib.sol";
+import {CCIPHelper} from "../src/libraries/CCIPHelper.sol";
 
 contract CCIPSuckerForkedTests is TestBaseWorkflow, JBTest {
     // CCIP Local Simulator Contracts
@@ -267,11 +269,14 @@ contract CCIPSuckerForkedTests is TestBaseWorkflow, JBTest {
         super.setUp();
 
         vm.stopPrank();
-        suckerDeployer =
-            new JBCCIPSuckerDeployer{salt: "salty"}(jbDirectory(), jbTokens(), jbPermissions(), address(this));
+        vm.startPrank(address(0x1112222));
+        suckerDeployer = new JBCCIPSuckerDeployer(jbDirectory(), jbTokens(), jbPermissions(), address(this));
+        vm.stopPrank();
 
         // Set the remote chain as arb-sep, which also grabs the chain selector from CCIPHelper for deployer
-        suckerDeployer.configureLayerSpecific(421_614);
+        suckerDeployer.configureLayerSpecific(
+            421_614, CCIPHelper.selectorOfChain(421_614), ICCIPRouter(CCIPHelper.routerOfChain(block.chainid))
+        );
 
         // deploy our first sucker (on sepolia, the current fork, or "L1").
         suckerGlobal = suckerDeployer.createForSender(1, "salty");
@@ -309,17 +314,24 @@ contract CCIPSuckerForkedTests is TestBaseWorkflow, JBTest {
         super.setUp();
 
         vm.stopPrank();
-        suckerDeployer2 =
-            new JBCCIPSuckerDeployer{salt: "salty"}(jbDirectory(), jbTokens(), jbPermissions(), address(this));
-        suckerDeployer2.configureLayerSpecific(11_155_111);
+
+        vm.startPrank(address(0x1112222));
+        suckerDeployer2 = new JBCCIPSuckerDeployer(jbDirectory(), jbTokens(), jbPermissions(), address(this));
+        vm.stopPrank();
+
+        suckerDeployer2.configureLayerSpecific(
+            11_155_111, CCIPHelper.selectorOfChain(11_155_111), ICCIPRouter(CCIPHelper.routerOfChain(block.chainid))
+        );
 
         // Deploy the sucker on L2.
-        vm.prank(address(suckerDeployer2));
-        deployCodeTo(
-            "JBCCIPSucker.sol",
-            abi.encode(jbDirectory(), jbTokens(), jbPermissions(), address(0), atbMode),
-            address(suckerGlobal)
-        );
+        suckerDeployer2.createForSender(1, "salty");
+
+        // vm.prank(address(suckerDeployer2));
+        // deployCodeTo(
+        //     "JBCCIPSucker.sol",
+        //     abi.encode(jbDirectory(), jbTokens(), jbPermissions(), address(0), atbMode),
+        //     address(suckerGlobal)
+        // );
 
         // Launch our project on L2.
         vm.startPrank(multisig());

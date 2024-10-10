@@ -465,3 +465,23 @@ To use the relayer, project creators have to create an OpenZeppelin Defender acc
 
 1. The `nana-suckers` contracts use Nomad's [`MerkleLib`](https://github.com/nomad-xyz/nomad-monorepo/blob/main/solidity/nomad-core/libs/Merkle.sol) merkle tree implementation, which is based on the eth2 deposit contract. I couldn't find a comparable implementation in Golang, so I wrote one which you're welcome to use: the [`tree`](https://github.com/Bananapus/juicerkle/blob/master/tree/tree.go) package in the [`juicerkle`](https://github.com/Bananapus/juicerkle) project. It provides utilities for calculating roots, as well as building and verifying merkle proofs. I use this implementation in the `juicerkle` service to generate claims.
 2. To thoroughly test `juicerkle` in practice, I built the end-to-end [`juicerkle-tester`](https://github.com/Bananapus/juicerkle-tester). As well as testing the `juicerkle` service, it serves as a useful bridging process walkthrough – it deploys appropriately configured projects, tokens, and suckers, and bridges between them.
+
+### Managing suckers
+
+Once configured suckers should manage themselves, however its important to stay up-to-date on changes to the bridge infrastructure that is used by the sucker of your choice. 
+In the case that a change is made that would cause suckers to no longer be functional/compatible with the underlying bridge infrastructure there are two options:
+(note, make sure to perform these actions on BOTH sides of the suckers)
+
+#### Disable a token
+In the case that a change to the underlying bridge causes only a single (or few) tokens to no longer function you might want to disable just those tokens. Your first step should be to call `mapToken(...)` with the token you wish to disable and `remoteToken` set to `address(0)` to disable it.
+If this does not work because the bridge will not let you perform a final transfer with the remaining funds then you can activate the `EmergencyHatch` for the tokens that are giving issues. 
+
+Enabling the `EmergencyHatch` allows tokens to be withdrawn by their depositors on the chain where they were deposited. Only those whose funds have not been moved to the remote chain can withdraw using the `EmergencyHatch`.
+An important side-note is that once an EmergencyHatch is opened for a token, the token will never be able to be bridged using this sucker. You can however deploy a new sucker for that token.
+
+#### Deprecate the suckers
+In the case that the bridiging infrastructure will no longer work you should deprecate the sucker, this will make it so that the sucker will start its shutdown procedure. Depending on the sucker implementation this will have a minimum duration which is needed to ensure that no funds/roots get lost while in transit. After this duration all tokens will allow for exit through the `EmergencyHatch` and no new messages will be accepted.
+
+This makes it so that even if at some point in the future the bridge starts sending fake/malicious transfers the sucker will reject all of these.
+
+When deprecating suckers make sure that your bridge infrastructure does not have pending messages that can/should be retried. Once the deprecation is complete these messages will no longer be accepted by the sucker.
