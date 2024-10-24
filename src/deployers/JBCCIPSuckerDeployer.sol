@@ -17,7 +17,7 @@ import {ICCIPRouter} from "src/interfaces/ICCIPRouter.sol";
 import {LibClone} from "solady/src/utils/LibClone.sol";
 import {CCIPHelper} from "src/libraries/CCIPHelper.sol";
 
-/// @notice An `IJBSuckerDeployer` implementation to deploy contracts.
+/// @notice An `IJBSuckerDeployer` which deploys `JBCCIPSucker` contracts.
 contract JBCCIPSuckerDeployer is JBPermissioned, IJBCCIPSuckerDeployer, IJBSuckerDeployer {
     error JBCCIPSuckerDeployer_DeployerIsNotConfigured();
     error JBCCIPSuckerDeployer_ZeroConfiguratorAddress();
@@ -34,23 +34,23 @@ contract JBCCIPSuckerDeployer is JBPermissioned, IJBCCIPSuckerDeployer, IJBSucke
     /// @notice The contract that manages token minting and burning.
     IJBTokens public immutable TOKENS;
 
-    /// @notice Only this address can configure this deployer, can only be used once.
+    /// @notice The address which is allowed to set chain-specific constants (the remote chain ID and CCIP selector).
     address public immutable LAYER_SPECIFIC_CONFIGURATOR;
 
     //*********************************************************************//
     // ---------------------- public stored properties ------------------- //
     //*********************************************************************//
 
-    /// @notice A mapping of suckers deployed by this contract.
+    /// @notice A mapping storing the addresses of suckers deployed by this contract.
     mapping(address => bool) public isSucker;
 
     /// @notice The singleton used to clone suckers.
     JBCCIPSucker public singleton;
 
-    /// @notice Store the remote chain id
+    /// @notice The remote chain ID for all suckers deployed by this contract.
     uint256 public ccipRemoteChainId;
 
-    /// @notice Store the remote chain id
+    /// @notice The remote chain selector target of all sucker deployed by this contract.
     uint64 public ccipRemoteChainSelector;
 
     /// @notice Store the address of the CCIP router for this chain.
@@ -85,7 +85,13 @@ contract JBCCIPSuckerDeployer is JBPermissioned, IJBCCIPSuckerDeployer, IJBSucke
     /// @notice handles some layer specific configuration that can't be done in the constructor otherwise deployment
     /// addresses would change.
     /// TODO natspec
-    function configureLayerSpecific(uint256 remoteChainId, uint64 remoteChainSelector, ICCIPRouter router) external {
+    function setChainSpecificConstants(
+        uint256 remoteChainId,
+        uint64 remoteChainSelector,
+        ICCIPRouter router
+    )
+        external
+    {
         // Only allow configurator to set properties.
         if (msg.sender != LAYER_SPECIFIC_CONFIGURATOR || ccipRemoteChainId != 0) {
             revert JBCCIPSuckerDeployer_Unauthorized();

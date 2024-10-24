@@ -89,7 +89,7 @@ contract DeployScript is Script, Sphinx {
                 core.directory, core.permissions, core.tokens, safeAddress()
             );
 
-            _opDeployer.configureLayerSpecific(
+            _opDeployer.setChainSpecificConstants(
                 IOPMessenger(
                     block.chainid == 1
                         ? address(0x25ace71c97B33Cc4729CF772ae268934F7ab5fA1)
@@ -112,7 +112,7 @@ contract DeployScript is Script, Sphinx {
                 core.directory, core.permissions, core.tokens, safeAddress()
             );
 
-            _opDeployer.configureLayerSpecific(
+            _opDeployer.setChainSpecificConstants(
                 IOPMessenger(0x4200000000000000000000000000000000000007),
                 IOPStandardBridge(0x4200000000000000000000000000000000000010)
             );
@@ -139,7 +139,7 @@ contract DeployScript is Script, Sphinx {
             JBBaseSuckerDeployer _baseDeployer =
                 new JBBaseSuckerDeployer{salt: BASE_SALT}(core.directory, core.permissions, core.tokens, safeAddress());
 
-            _baseDeployer.configureLayerSpecific(
+            _baseDeployer.setChainSpecificConstants(
                 IOPMessenger(
                     block.chainid == 1
                         ? address(0x866E82a600A1414e583f7F13623F1aC5d58b0Afa)
@@ -161,7 +161,7 @@ contract DeployScript is Script, Sphinx {
             JBBaseSuckerDeployer _baseDeployer =
                 new JBBaseSuckerDeployer{salt: BASE_SALT}(core.directory, core.permissions, core.tokens, safeAddress());
 
-            _baseDeployer.configureLayerSpecific(
+            _baseDeployer.setChainSpecificConstants(
                 IOPMessenger(0x4200000000000000000000000000000000000007),
                 IOPStandardBridge(0x4200000000000000000000000000000000000010)
             );

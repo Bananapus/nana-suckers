@@ -81,7 +81,7 @@ contract JBArbitrumSuckerDeployer is JBPermissioned, IJBSuckerDeployer, IJBArbit
     /// addresses would change.
     /// @notice messenger the OPMesssenger on this layer.
     /// @notice bridge the OPStandardBridge on this layer.
-    function configureLayerSpecific(JBLayer layer, IInbox inbox, IArbGatewayRouter gatewayRouter) external {
+    function setChainSpecificConstants(JBLayer layer, IInbox inbox, IArbGatewayRouter gatewayRouter) external {
         if (
             uint256(arbLayer) != uint256(0) || address(arbInbox) != address(0)
                 || address(arbGatewayRouter) != address(0)

@@ -60,7 +60,6 @@ contract DeployerTests is Test, TestBaseWorkflow, IERC721Receiver {
             allowSetController: false,
             allowAddAccountingContext: true,
             allowAddPriceFeed: true,
-            allowCrosschainSuckerExtension: true,
             ownerMustSendPayouts: false,
             holdFees: false,
             useTotalSurplusForRedemptions: true,
@@ -138,7 +137,7 @@ contract DeployerTests is Test, TestBaseWorkflow, IERC721Receiver {
         });
 
         deployer = OPDeployer;
-        OPDeployer.configureLayerSpecific(_opMessenger, _opBridge);
+        OPDeployer.setChainSpecificConstants(_opMessenger, _opBridge);
 
         assertEq(address(OPDeployer.opMessenger()), address(_opMessenger));
         assertEq(address(OPDeployer.opBridge()), address(_opBridge));
@@ -160,7 +159,7 @@ contract DeployerTests is Test, TestBaseWorkflow, IERC721Receiver {
         });
 
         deployer = CCIPDeployer;
-        CCIPDeployer.configureLayerSpecific({
+        CCIPDeployer.setChainSpecificConstants({
             remoteChainId: _remoteChainId,
             remoteChainSelector: _remoteChainSelector,
             router: _ccipRouter
@@ -187,7 +186,7 @@ contract DeployerTests is Test, TestBaseWorkflow, IERC721Receiver {
         });
 
         deployer = ARBDeployer;
-        ARBDeployer.configureLayerSpecific(_layer, _inbox, _gatewayRouter);
+        ARBDeployer.setChainSpecificConstants(_layer, _inbox, _gatewayRouter);
 
         assertEq(uint256(ARBDeployer.arbLayer()), uint256(_layer));
         assertEq(address(ARBDeployer.arbInbox()), address(_inbox));

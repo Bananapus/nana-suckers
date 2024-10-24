@@ -7,5 +7,5 @@ import {IOPMessenger} from "./IOPMessenger.sol";
 interface IJBOpSuckerDeployer {
     function opBridge() external view returns (IOPStandardBridge);
     function opMessenger() external view returns (IOPMessenger);
-    function configureLayerSpecific(IOPMessenger messenger, IOPStandardBridge bridge) external;
+    function setChainSpecificConstants(IOPMessenger messenger, IOPStandardBridge bridge) external;
 }

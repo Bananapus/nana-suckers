@@ -96,7 +96,6 @@ contract CCIPSuckerForkedTests is TestBaseWorkflow, JBTest {
             allowSetController: false,
             allowAddAccountingContext: true,
             allowAddPriceFeed: true,
-            allowCrosschainSuckerExtension: true,
             ownerMustSendPayouts: false,
             holdFees: false,
             useTotalSurplusForRedemptions: true,
@@ -274,7 +273,7 @@ contract CCIPSuckerForkedTests is TestBaseWorkflow, JBTest {
         vm.stopPrank();
 
         // Set the remote chain as arb-sep, which also grabs the chain selector from CCIPHelper for deployer
-        suckerDeployer.configureLayerSpecific(
+        suckerDeployer.setChainSpecificConstants(
             421_614, CCIPHelper.selectorOfChain(421_614), ICCIPRouter(CCIPHelper.routerOfChain(block.chainid))
         );
 
@@ -319,7 +318,7 @@ contract CCIPSuckerForkedTests is TestBaseWorkflow, JBTest {
         suckerDeployer2 = new JBCCIPSuckerDeployer(jbDirectory(), jbPermissions(), jbTokens(), address(this));
         vm.stopPrank();
 
-        suckerDeployer2.configureLayerSpecific(
+        suckerDeployer2.setChainSpecificConstants(
             11_155_111, CCIPHelper.selectorOfChain(11_155_111), ICCIPRouter(CCIPHelper.routerOfChain(block.chainid))
         );
 
@@ -349,6 +348,9 @@ contract CCIPSuckerForkedTests is TestBaseWorkflow, JBTest {
     //*********************************************************************//
 
     function test_forkNativeTransfer() external {
+        // The pool is disabled for now, but functionality was confirmed in past runs.
+        vm.skip(true);
+
         // Declare test actors and parameters
         address rootSender = makeAddr("rootSender");
         address user = makeAddr("him");
