@@ -140,7 +140,7 @@ contract DeployScript is Script, Sphinx {
                 directory: core.directory,
                 permissions: core.permissions,
                 tokens: core.tokens,
-                addToBalanceMode: JBAddToBalanceMode.MANUAL,
+                addToBalanceMode: JBAddToBalanceMode.ON_CLAIM,
                 trusted_forwarder: TRUSTED_FORWARDER
             });
 
@@ -172,7 +172,7 @@ contract DeployScript is Script, Sphinx {
                 directory: core.directory,
                 permissions: core.permissions,
                 tokens: core.tokens,
-                addToBalanceMode: JBAddToBalanceMode.MANUAL,
+                addToBalanceMode: JBAddToBalanceMode.ON_CLAIM,
                 trusted_forwarder: TRUSTED_FORWARDER
             });
 
@@ -225,7 +225,7 @@ contract DeployScript is Script, Sphinx {
                 directory: core.directory,
                 permissions: core.permissions,
                 tokens: core.tokens,
-                addToBalanceMode: JBAddToBalanceMode.MANUAL,
+                addToBalanceMode: JBAddToBalanceMode.ON_CLAIM,
                 trusted_forwarder: TRUSTED_FORWARDER
             });
 
@@ -257,7 +257,7 @@ contract DeployScript is Script, Sphinx {
                 directory: core.directory,
                 permissions: core.permissions,
                 tokens: core.tokens,
-                addToBalanceMode: JBAddToBalanceMode.MANUAL,
+                addToBalanceMode: JBAddToBalanceMode.ON_CLAIM,
                 trusted_forwarder: TRUSTED_FORWARDER
             });
 
@@ -306,7 +306,7 @@ contract DeployScript is Script, Sphinx {
                 directory: core.directory,
                 permissions: core.permissions,
                 tokens: core.tokens,
-                addToBalanceMode: JBAddToBalanceMode.MANUAL,
+                addToBalanceMode: JBAddToBalanceMode.ON_CLAIM,
                 trusted_forwarder: TRUSTED_FORWARDER
             });
 
@@ -341,7 +341,7 @@ contract DeployScript is Script, Sphinx {
                 directory: core.directory,
                 permissions: core.permissions,
                 tokens: core.tokens,
-                addToBalanceMode: JBAddToBalanceMode.MANUAL,
+                addToBalanceMode: JBAddToBalanceMode.ON_CLAIM,
                 trusted_forwarder: TRUSTED_FORWARDER
             });
 
@@ -495,7 +495,7 @@ contract DeployScript is Script, Sphinx {
             directory: directory,
             tokens: tokens,
             permissions: permissions,
-            addToBalanceMode: JBAddToBalanceMode.MANUAL,
+            addToBalanceMode: JBAddToBalanceMode.ON_CLAIM,
             trusted_forwarder: trusted_forwarder
         });
 
